@@ -1,10 +1,10 @@
 import { findDepartment } from "@/lib/departments";
 import { appendBooking, nextSerial } from "@/lib/sheets";
 
-// 用 LINE 官方 API 驗證 LIFF 的 ID token，避免有人偽造 User ID
+// 用 LINE 官方 API 驗證 LIFF 的 ID token：必須是已登入 LINE 的人才能登記，也避免偽造 User ID
 async function verifyLine(idToken: string) {
   const channelId = process.env.LINE_CHANNEL_ID;
-  if (!idToken || !channelId) return { name: "", userId: "" };
+  if (!idToken || !channelId) return null;
   const res = await fetch("https://api.line.me/oauth2/v2.1/verify", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   // 維修編號：部門代號-日期-當天流水號，例如 C1-261028-01、C1-261028-02
   const line = await verifyLine(String(idToken ?? ""));
   if (!line) {
-    return Response.json({ error: "LINE 登入已過期，請重新整理頁面" }, { status: 401 });
+    return Response.json({ error: "請先以 LINE 登入後再登記（登入逾時請重新整理頁面）" }, { status: 401 });
   }
 
   const now = new Date();

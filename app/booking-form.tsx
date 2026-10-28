@@ -38,18 +38,22 @@ function Field({ label, required, children }: { label: string; required?: boolea
 export default function BookingForm() {
   const [dept, setDept] = useState("");
   const [status, setStatus] = useState<"idle" | "sending" | "error">("idle");
+  const [errorMsg, setErrorMsg] = useState("");
+  // loading：LINE 登入中；ready：已登入可登記；preview：只看畫面不能送出；failed：無法登入
+  const [mode, setMode] = useState<"loading" | "ready" | "preview" | "failed">("loading");
   const [bookingId, setBookingId] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [idToken, setIdToken] = useState("");
   const [lineName, setLineName] = useState("");
   const [isFriend, setIsFriend] = useState<boolean | null>(null);
 
-  // 有設定 LIFF ID 才啟用 LINE 登入，取得 LINE 姓名與 ID token
+  // 必須先登入 LINE 才能登記；登入後取得 LINE 姓名與 ID token（後端會再驗證）
   useEffect(() => {
-    const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
-    // 網址加 ?preview 可略過 LINE 登入，只看畫面（LINE 姓名與 User ID 會是空的）
-    if (!liffId || new URLSearchParams(location.search).has("preview")) return;
     (async () => {
+      // 網址加 ?preview 只看畫面，不能送出
+      if (new URLSearchParams(location.search).has("preview")) return setMode("preview");
+      const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
+      if (!liffId) return setMode("failed");
       const { default: liff } = await import("@line/liff");
       await liff.init({ liffId });
       if (!liff.isLoggedIn()) return liff.login();
@@ -57,20 +61,37 @@ export default function BookingForm() {
       setLineName((await liff.getProfile()).displayName);
       // 需要 channel 已連結官方帳號才查得到好友狀態，查不到就當作未知
       setIsFriend((await liff.getFriendship().catch(() => null))?.friendFlag ?? null);
-    })().catch(console.error);
+      setMode("ready");
+    })().catch(() => setMode("failed"));
   }, []);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (mode !== "ready") return;
     setStatus("sending");
+    setErrorMsg("");
     const data = Object.fromEntries(new FormData(e.currentTarget));
     const res = await fetch("/api/booking", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...data, department: dept, idToken }),
     });
-    if (!res.ok) return setStatus("error");
+    if (!res.ok) {
+      setErrorMsg((await res.json().catch(() => null))?.error ?? "");
+      return setStatus("error");
+    }
     setBookingId((await res.json()).bookingId);
+  }
+
+  if (mode === "loading" || mode === "failed") {
+    return (
+      <div className={`${cardCls} text-center`}>
+        <p className="font-bold">{mode === "loading" ? "LINE 登入中…" : "無法登入 LINE"}</p>
+        {mode === "failed" && (
+          <p className="mt-2 text-sm text-zinc-500">請使用 LINE 開啟本頁面後再登記，或重新整理頁面。</p>
+        )}
+      </div>
+    );
   }
 
   if (bookingId) {
@@ -190,9 +211,14 @@ export default function BookingForm() {
             />
             <span className="font-medium">我已閱讀並同意以上合約內容</span>
           </label>
-          {status === "error" && <p className="mt-4 text-sm text-red-500">送出失敗，請稍後再試</p>}
+          {mode === "preview" && (
+            <p className="mt-4 text-sm text-zinc-500">目前是預覽模式，無法送出。請用 LINE 開啟後再登記。</p>
+          )}
+          {status === "error" && (
+            <p className="mt-4 text-sm text-red-500">{errorMsg || "送出失敗，請稍後再試"}</p>
+          )}
           <button
-            disabled={status === "sending" || !agreed}
+            disabled={status === "sending" || !agreed || mode !== "ready"}
             className="mt-6 w-full rounded-xl bg-decathlon py-3.5 text-lg font-bold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:hover:brightness-100"
           >
             {status === "sending" ? "送出中…" : "送出登記"}
