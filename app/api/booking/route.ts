@@ -31,14 +31,11 @@ export async function POST(request: Request) {
   }
 
   const now = new Date();
-  const ymd = now
-    .toLocaleDateString("sv-SE", { timeZone: "Asia/Taipei" })
-    .replaceAll("-", "")
-    .slice(2);
   const receivedDate = now.toLocaleDateString("sv-SE", { timeZone: "Asia/Taipei" });
 
   try {
-    const prefix = `${dept.code}-${ymd}-`;
+    // 維修編號：部門代號-流水號，各部門各自從 001 起算，例如 C1-001、C1-002
+    const prefix = `${dept.code}-`;
     const bookingId = prefix + (await nextSerial(dept.sheet, prefix));
     // 欄位順序要和試算表標題列一致：
     // 維修編號、狀態、接單日期、接單人、顧客姓名、連絡電話、會員電話、

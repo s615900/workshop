@@ -24,7 +24,7 @@ export async function appendBooking(sheetName: string, row: string[]) {
   });
 }
 
-// 讀出該分頁已有的編號，算出同一前綴（部門-日期-）的下一個流水號，例如 C1-261028-01 → 02
+// 讀出該分頁已有的編號，算出同一部門的下一個流水號（補滿 3 位），例如 C1-001 → C1-002
 export async function nextSerial(sheetName: string, prefix: string) {
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
   if (!spreadsheetId) throw new Error("缺少 GOOGLE_SHEET_ID");
@@ -32,11 +32,11 @@ export async function nextSerial(sheetName: string, prefix: string) {
     spreadsheetId,
     range: `'${sheetName}'!A:A`,
   });
+  const pattern = new RegExp(`^${prefix}(\\d+)$`);
   const used = (res.data.values ?? [])
-    .map((r) => String(r[0] ?? ""))
-    .filter((id) => id.startsWith(prefix))
-    .map((id) => Number(id.slice(prefix.length)))
-    .filter((n) => Number.isInteger(n));
+    .map((r) => pattern.exec(String(r[0] ?? ""))?.[1])
+    .filter((n): n is string => n !== undefined)
+    .map(Number);
   const next = (used.length ? Math.max(...used) : 0) + 1;
-  return String(next).padStart(2, "0");
+  return String(next).padStart(3, "0");
 }
