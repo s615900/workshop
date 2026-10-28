@@ -105,7 +105,7 @@ export default function BookingForm() {
         <p className="mt-4 text-xl font-bold">登記成功</p>
         <p className="mt-4 text-sm text-zinc-500">維修編號</p>
         <p className="mt-1 text-2xl font-extrabold tracking-wide text-decathlon">{bookingId}</p>
-        <p className="mt-4 text-sm text-zinc-500">維修保養完畢後，迪卡儂將以簡訊方式通知您取件。</p>
+        <p className="mt-4 text-sm text-zinc-500">維修保養完畢後，迪卡儂將以 LINE 訊息通知您取件。</p>
         <div className="mt-5">
           {isFriend ? (
             <p className="text-sm font-medium text-[#06C755]">✓ 已加入官方帳號好友</p>

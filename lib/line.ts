@@ -53,7 +53,7 @@ function bookingCard(c: Card) {
         contents: [
           {
             type: "text",
-            text: "維修保養完畢後，迪卡儂將以簡訊方式通知您取件。",
+            text: "維修保養完畢後，迪卡儂將以 LINE 訊息通知您取件。",
             size: "xs",
             color: "#888888",
             wrap: true,
