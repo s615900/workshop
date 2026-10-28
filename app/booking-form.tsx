@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { DEPARTMENTS } from "@/lib/departments";
 
+// LINE 官方帳號「加入好友」連結與官方按鈕圖片
+const ADD_FRIEND_URL = "https://lin.ee/ypXAOce";
+const ADD_FRIEND_IMG = "https://scdn.line-apps.com/n/line_add_friends/btn/zh-Hant.png";
+
 const inputCls =
   "w-full rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-3 outline-none transition focus:border-decathlon focus:bg-white focus:ring-2 focus:ring-decathlon/20";
 
@@ -38,6 +42,7 @@ export default function BookingForm() {
   const [agreed, setAgreed] = useState(false);
   const [idToken, setIdToken] = useState("");
   const [lineName, setLineName] = useState("");
+  const [isFriend, setIsFriend] = useState<boolean | null>(null);
 
   // 有設定 LIFF ID 才啟用 LINE 登入，取得 LINE 姓名與 ID token
   useEffect(() => {
@@ -49,6 +54,8 @@ export default function BookingForm() {
       if (!liff.isLoggedIn()) return liff.login();
       setIdToken(liff.getIDToken() ?? "");
       setLineName((await liff.getProfile()).displayName);
+      // 需要 channel 已連結官方帳號才查得到好友狀態，查不到就當作未知
+      setIsFriend((await liff.getFriendship().catch(() => null))?.friendFlag ?? null);
     })().catch(console.error);
   }, []);
 
@@ -75,6 +82,17 @@ export default function BookingForm() {
         <p className="mt-4 text-sm text-zinc-500">維修編號</p>
         <p className="mt-1 text-2xl font-extrabold tracking-wide text-decathlon">{bookingId}</p>
         <p className="mt-4 text-sm text-zinc-500">維修保養完畢後，迪卡儂將以簡訊方式通知您取件。</p>
+        <div className="mt-5">
+          {isFriend ? (
+            <p className="text-sm font-medium text-[#06C755]">✓ 已加入官方帳號好友</p>
+          ) : (
+            <a href={ADD_FRIEND_URL} target="_blank" rel="noopener noreferrer" className="inline-block">
+              {/* LINE 官方按鈕圖片，不需經 next/image 處理 */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={ADD_FRIEND_IMG} alt="加入好友" height={44} className="h-11 w-auto" />
+            </a>
+          )}
+        </div>
         <button
           className="mt-6 rounded-xl border-2 border-decathlon px-6 py-2.5 font-semibold text-decathlon transition hover:bg-decathlon hover:text-white"
           onClick={() => { setBookingId(""); setDept(""); setAgreed(false); setStatus("idle"); }}
