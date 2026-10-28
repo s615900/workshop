@@ -5,6 +5,8 @@ import { DEPARTMENTS } from "@/lib/departments";
 
 // LINE 官方帳號「加入好友」連結與官方按鈕圖片
 const ADD_FRIEND_URL = "https://lin.ee/ypXAOce";
+// 開啟官方帳號聊天室，並預先填好維修編號，客人按送出後後台聊天清單才會有這位客人
+const OA_BASIC_ID = "@163rtgnr";
 const ADD_FRIEND_IMG = "https://scdn.line-apps.com/n/line_add_friends/btn/zh-Hant.png";
 
 const inputCls =
@@ -115,6 +117,14 @@ export default function BookingForm() {
             </a>
           )}
         </div>
+        <a
+          href={`https://line.me/R/oaMessage/${OA_BASIC_ID}/?${encodeURIComponent(`我要查詢維修 ${bookingId}`)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 flex items-center justify-center rounded-xl border-2 border-[#06C755] py-3 font-bold text-[#06C755] transition hover:bg-[#06C755] hover:text-white"
+        >
+          傳送維修編號給客服
+        </a>
         <button
           className="mt-6 rounded-xl border-2 border-decathlon px-6 py-2.5 font-semibold text-decathlon transition hover:bg-decathlon hover:text-white"
           onClick={() => { setBookingId(""); setDept(""); setAgreed(false); setStatus("idle"); }}
