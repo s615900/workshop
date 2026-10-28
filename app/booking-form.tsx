@@ -47,7 +47,8 @@ export default function BookingForm() {
   // 有設定 LIFF ID 才啟用 LINE 登入，取得 LINE 姓名與 ID token
   useEffect(() => {
     const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
-    if (!liffId) return;
+    // 網址加 ?preview 可略過 LINE 登入，只看畫面（LINE 姓名與 User ID 會是空的）
+    if (!liffId || new URLSearchParams(location.search).has("preview")) return;
     (async () => {
       const { default: liff } = await import("@line/liff");
       await liff.init({ liffId });
