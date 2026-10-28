@@ -118,7 +118,7 @@ export default function BookingForm() {
           )}
         </div>
         <a
-          href={`https://line.me/R/oaMessage/${OA_BASIC_ID}/?${encodeURIComponent(`我要查詢維修 ${bookingId}`)}`}
+          href={`https://line.me/R/oaMessage/${OA_BASIC_ID}/?${encodeURIComponent(`我的維修編號是 ${bookingId}`)}`}
           target="_blank"
           rel="noopener noreferrer"
           className="mt-4 flex items-center justify-center rounded-xl border-2 border-[#06C755] py-3 font-bold text-[#06C755] transition hover:bg-[#06C755] hover:text-white"
