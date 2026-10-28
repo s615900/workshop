@@ -1,4 +1,5 @@
 import { findDepartment } from "@/lib/departments";
+import { pushBookingCard } from "@/lib/line";
 import { appendBooking, nextSerial } from "@/lib/sheets";
 
 // 用 LINE 官方 API 驗證 LIFF 的 ID token：必須是已登入 LINE 的人才能登記，也避免偽造 User ID
@@ -45,6 +46,14 @@ export async function POST(request: Request) {
       productName, "", purchaseDate ?? "", "", "", problem,
       line.name, line.userId,
     ]);
+    // 推播登記完成卡片給客人；失敗只記錄，不影響登記結果
+    await pushBookingCard(line.userId, {
+      bookingId,
+      department: dept.sheet,
+      name,
+      productName,
+      receivedDate,
+    }).catch(console.error);
     return Response.json({ ok: true, bookingId });
   } catch (e) {
     console.error(e);
