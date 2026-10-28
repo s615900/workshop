@@ -51,36 +51,51 @@ function columnLetter(index: number) {
   return s;
 }
 
-// 只讀：算出新登記要用的編號、寫入的列，以及每個欄位會填進哪一欄
+// 只讀：算出新登記要用的編號、寫入的列，以及每個欄位會填進哪一欄。
+// 各分頁在最後一筆真實資料後面，通常有預先編好號、還沒填資料的空白列（例如 C1-828…）。
+// 優先使用其中第一列（沿用它的編號與格式）；用完才在最後面新增一列並接續編號。
 export async function planBooking(dept: Department, record: BookingRecord) {
   const spreadsheetId = process.env.GOOGLE_SHEET_ID;
   if (!spreadsheetId) throw new Error("缺少 GOOGLE_SHEET_ID");
   const api = getClient().spreadsheets.values;
   const q = `'${dept.sheet}'`;
 
-  const [header, colA] = await Promise.all([
-    api.get({ spreadsheetId, range: `${q}!${dept.headerRow}:${dept.headerRow}` }),
-    api.get({ spreadsheetId, range: `${q}!A:A` }),
-  ]);
+  const header = await api.get({ spreadsheetId, range: `${q}!${dept.headerRow}:${dept.headerRow}` });
   const headers = (header.data.values?.[0] ?? []).map((h) => String(h).trim());
-  const ids = (colA.data.values ?? []).map((r) => String(r[0] ?? ""));
 
-  // 編號：同部門已有的最大流水號 + 1（至少 3 位）；寫入列：最後一個編號的下一列
+  // 編號欄、顧客姓名欄、狀態欄一次讀完（算一次讀取）
+  const signalCols = [headers.indexOf("顧客姓名"), headers.indexOf("狀態")].filter((c) => c >= 0);
+  const batch = await api.batchGet({
+    spreadsheetId,
+    ranges: [`${q}!A:A`, ...signalCols.map((c) => `${q}!${columnLetter(c)}:${columnLetter(c)}`)],
+  });
+  const [colA, ...signals] = (batch.data.valueRanges ?? []).map((r) => r.values ?? []);
+  const text = (v: unknown) => String(v ?? "").trim();
+
   const prefix = `${dept.code}-`;
   const pattern = new RegExp(`^${prefix}(\\d+)$`);
-  let max = 0;
-  let lastRow = dept.headerRow;
-  ids.forEach((id, i) => {
-    const m = pattern.exec(id);
-    if (!m) return;
-    max = Math.max(max, Number(m[1]));
-    lastRow = Math.max(lastRow, i + 1);
-  });
-  const bookingId = prefix + String(max + 1).padStart(3, "0");
-  const row = lastRow + 1;
+  const rows = colA.map((r, i) => ({
+    row: i + 1,
+    num: pattern.exec(text(r?.[0]))?.[1],
+    filled: signals.some((c) => text(c[i]?.[0]) !== ""),
+  })).filter((r) => r.row > dept.headerRow && r.num !== undefined);
 
-  const cells: { cell: string; col: number; header: string; value: string; dateFormat?: string }[] = [
-    { cell: `A${row}`, col: 0, header: "維修編號", value: bookingId },
+  const lastDataRow = rows.reduce((m, r) => (r.filled ? Math.max(m, r.row) : m), dept.headerRow);
+  const spare = rows.find((r) => r.row > lastDataRow && !r.filled);
+
+  let bookingId: string;
+  let row: number;
+  if (spare) {
+    bookingId = `${prefix}${spare.num}`;
+    row = spare.row;
+  } else {
+    const max = rows.reduce((m, r) => Math.max(m, Number(r.num)), 0);
+    bookingId = prefix + String(max + 1).padStart(3, "0");
+    row = Math.max(lastDataRow, ...rows.map((r) => r.row)) + 1;
+  }
+
+  const cells: { cell: string; col: number; header: string; value: string; align: string; dateFormat?: string; skip?: boolean }[] = [
+    { cell: `A${row}`, col: 0, header: "維修編號", value: bookingId, align: "CENTER", skip: !!spare },
   ];
   for (const [field, names] of Object.entries(HEADERS)) {
     const header = names.find((n) => headers.includes(n));
@@ -91,14 +106,16 @@ export async function planBooking(dept: Department, record: BookingRecord) {
       col,
       header,
       value: record[field as keyof BookingRecord],
+      // 現有資料都是置中，只有問題描述靠左
+      align: field === "problem" ? "LEFT" : "CENTER",
       dateFormat: DATE_FORMATS[field as keyof typeof HEADERS],
     });
   }
-  return { bookingId, row, cells };
+  return { bookingId, row, reusedSpareRow: !!spare, cells };
 }
 
-// 寫入：只寫上面算出的那幾格，其他欄位（公式、格式、別人的資料）一律不碰。
-// 文字（含電話，保留開頭 0）原樣寫入；日期欄位交給試算表轉成日期，沒填的就不寫
+// 寫入：只寫上面算出的那幾格，其他欄位（公式、別人的資料）一律不碰。
+// 文字（含電話，保留開頭 0）原樣寫入；日期寫成真日期；寫入的格子統一成現有資料的樣式（字級 12、置中）
 export async function createBooking(dept: Department, record: BookingRecord) {
   const plan = await planBooking(dept, record);
   const client = getClient();
@@ -126,24 +143,25 @@ export async function createBooking(dept: Department, record: BookingRecord) {
     const [y, m, d] = iso.split("-").map(Number);
     return Date.UTC(y, m - 1, d) / 86400000 + 25569;
   };
-  const cells = plan.cells.filter((c) => !c.dateFormat || c.value);
+  const cells = plan.cells.filter((c) => !(c.dateFormat && !c.value));
   await api.batchUpdate({
     spreadsheetId,
     requestBody: {
       valueInputOption: "RAW",
-      data: cells.map((c) => ({
-        range: `'${dept.sheet}'!${c.cell}`,
-        values: [[c.dateFormat ? serial(c.value) : c.value]],
-      })),
+      data: cells
+        .filter((c) => !c.skip)
+        .map((c) => ({
+          range: `'${dept.sheet}'!${c.cell}`,
+          values: [[c.dateFormat ? serial(c.value) : c.value]],
+        })),
     },
   });
-  // 指定日期顯示格式（新增的列不一定有預設格式，有些欄位甚至是純文字格式）
-  const dateCells = cells.filter((c) => c.dateFormat);
-  if (sheet && dateCells.length) {
+
+  if (sheet) {
     await client.spreadsheets.batchUpdate({
       spreadsheetId,
       requestBody: {
-        requests: dateCells.map((c) => ({
+        requests: cells.map((c) => ({
           repeatCell: {
             range: {
               sheetId: sheet.sheetId,
@@ -152,8 +170,16 @@ export async function createBooking(dept: Department, record: BookingRecord) {
               startColumnIndex: c.col,
               endColumnIndex: c.col + 1,
             },
-            cell: { userEnteredFormat: { numberFormat: { type: "DATE", pattern: c.dateFormat } } },
-            fields: "userEnteredFormat.numberFormat",
+            cell: {
+              userEnteredFormat: {
+                textFormat: { fontSize: 12 },
+                horizontalAlignment: c.align,
+                ...(c.dateFormat ? { numberFormat: { type: "DATE", pattern: c.dateFormat } } : {}),
+              },
+            },
+            fields:
+              "userEnteredFormat.textFormat.fontSize,userEnteredFormat.horizontalAlignment" +
+              (c.dateFormat ? ",userEnteredFormat.numberFormat" : ""),
           },
         })),
       },
