@@ -2,7 +2,7 @@ import { google } from "googleapis";
 
 function getClient() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  // 容忍貼到 Vercel 時多出的引號，並把字面上的 \\n 還原成換行
+  // 容忍貼到 Vercel 時多出的引號，並把字面上的 \n 還原成換行
   const key = process.env.GOOGLE_PRIVATE_KEY?.trim()
     .replace(/^"|"$/g, "")
     .replace(/\\n/g, "\n");

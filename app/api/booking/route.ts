@@ -48,6 +48,6 @@ export async function POST(request: Request) {
     return Response.json({ ok: true, bookingId });
   } catch (e) {
     console.error(e);
-    return Response.json({ error: "寫入失敗，請稍後再試" }, { status: 500 });
+    return Response.json({ error: "寫入失敗，請稍後再試", debug: String((e as Error).message).slice(0, 200), env: { id: !!process.env.GOOGLE_SHEET_ID, email: !!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL, key: (process.env.GOOGLE_PRIVATE_KEY ?? "").length } }, { status: 500 });
   }
 }
