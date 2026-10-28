@@ -2,7 +2,10 @@ import { google } from "googleapis";
 
 function getClient() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const key = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  // 容忍貼到 Vercel 時多出的引號，並把字面上的 \\n 還原成換行
+  const key = process.env.GOOGLE_PRIVATE_KEY?.trim()
+    .replace(/^"|"$/g, "")
+    .replace(/\\n/g, "\n");
   if (!email || !key) throw new Error("缺少 Google 服務帳號環境變數");
   const auth = new google.auth.JWT({
     email,
