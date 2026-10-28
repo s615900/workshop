@@ -25,3 +25,18 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* iOS 的日期欄位會忽略寬度與高度，這裡統一成和其他輸入框一樣 */
+.date-input {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 3rem;
+  appearance: none;
+  -webkit-appearance: none;
+  text-align: left;
+}
+.date-input::-webkit-date-and-time-value {
+  text-align: left;
+  min-height: 1.5em;
+}

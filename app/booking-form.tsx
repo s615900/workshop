@@ -187,7 +187,7 @@ export default function BookingForm() {
               <input name="phone" required type="tel" className={inputCls} />
             </Field>
             <Field label="購買日期">
-              <input name="purchaseDate" type="date" className={inputCls} />
+              <input name="purchaseDate" type="date" className={`${inputCls} date-input`} />
             </Field>
             <div className="sm:col-span-2">
               <Field label="商品名稱" required>
@@ -203,7 +203,7 @@ export default function BookingForm() {
           <div className="mt-6 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
             <p className="mb-2 font-bold text-decathlon">請觀看合約書後確保權益</p>
             <ol className="max-h-48 list-decimal space-y-2 overflow-y-auto pl-5 text-sm leading-relaxed text-zinc-700">
-              <li>維修保養完畢後，迪卡儂將以簡訊方式通知顧客取件，請顧客於約定時間內至店內取件。</li>
+              <li>維修保養完畢後，迪卡儂將以 LINE 訊息方式通知顧客取件，請顧客於約定時間內至店內取件。</li>
               <li>
                 若顧客接獲通知後有逾時未取之情形時，迪卡儂將視狀況酌收保管費用；若未取時間超過一個月時，您的商品將視同遺失物，並以法定方式處理。若因顧客逾期未取至涉訟者，迪卡儂相關法律程序及律師費用應由顧客負擔。感謝配合。
               </li>
