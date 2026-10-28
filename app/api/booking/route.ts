@@ -1,6 +1,6 @@
 import { findDepartment } from "@/lib/departments";
 import { pushBookingCard } from "@/lib/line";
-import { appendBooking, nextSerial } from "@/lib/sheets";
+import { createBooking } from "@/lib/sheets";
 
 // 用 LINE 官方 API 驗證 LIFF 的 ID token：必須是已登入 LINE 的人才能登記，也避免偽造 User ID
 async function verifyLine(idToken: string) {
@@ -25,7 +25,6 @@ export async function POST(request: Request) {
     return Response.json({ error: "資料不完整" }, { status: 400 });
   }
 
-  // 維修編號：部門代號-日期-當天流水號，例如 C1-261028-01、C1-261028-02
   const line = await verifyLine(String(idToken ?? ""));
   if (!line) {
     return Response.json({ error: "請先以 LINE 登入後再登記（登入逾時請重新整理頁面）" }, { status: 401 });
@@ -35,17 +34,20 @@ export async function POST(request: Request) {
   const receivedDate = now.toLocaleDateString("sv-SE", { timeZone: "Asia/Taipei" });
 
   try {
-    // 維修編號：部門代號-流水號，各部門各自從 001 起算，例如 C1-001、C1-002
-    const prefix = `${dept.code}-`;
-    const bookingId = prefix + (await nextSerial(dept.sheet, prefix));
-    // 欄位順序要和試算表標題列一致：
-    // 維修編號、狀態、接單日期、接單人、顧客姓名、連絡電話、會員電話、
-    // 商品名稱、item、購買日期、維修部位、費用、備註、LINE姓名、LINE User ID
-    await appendBooking(dept.sheet, [
-      bookingId, "待接單", receivedDate, "", name, contactPhone, phone,
-      productName, "", purchaseDate ?? "", "", "", problem,
-      line.name, line.userId,
-    ]);
+    // 編號與寫入位置由 createBooking 依各分頁現有資料自動接續；
+    // 分頁沒有的欄位會跳過，不動其他欄位
+    const bookingId = await createBooking(dept, {
+      status: "待評估",
+      receivedDate,
+      name,
+      contactPhone,
+      memberPhone: phone,
+      product: productName,
+      purchaseDate: purchaseDate ?? "",
+      problem,
+      lineName: line.name,
+      lineUserId: line.userId,
+    });
     // 推播登記完成卡片給客人；失敗只記錄，不影響登記結果
     await pushBookingCard(line.userId, {
       bookingId,
