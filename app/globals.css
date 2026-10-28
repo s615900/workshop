@@ -6,6 +6,7 @@
 }
 
 @theme inline {
+  --color-decathlon: #3643ba; /* 迪卡儂藍 */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
