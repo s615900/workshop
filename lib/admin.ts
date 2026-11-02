@@ -175,7 +175,7 @@ export async function updateStatus(deptId: string, row: number, bookingId: strin
 
 export async function notifyPickup(deptId: string, row: number, bookingId: string) {
   const token = process.env.LINE_MESSAGING_TOKEN;
-  if (!token) throw new Error("缺少 LINE_MESSAGING_TOKEN");
+  if (!token) throw new Error("Vercel 上缺少環境變數 LINE_MESSAGING_TOKEN");
   const { dept, headers } = await locate(deptId, row, bookingId);
   const c = headers.indexOf("LINE User ID");
   if (c < 0) throw new Error("這個分頁沒有「LINE User ID」欄");
@@ -197,5 +197,9 @@ export async function notifyPickup(deptId: string, row: number, bookingId: strin
       messages: [{ type: "text", text: `您好，您的維修（編號 ${bookingId}）已處理完畢，歡迎至迪卡儂三重店取件，謝謝！` }],
     }),
   });
-  if (!push.ok) throw new Error("LINE 推播失敗（客人可能已封鎖或未加好友）");
+  if (!push.ok) {
+    const detail = await push.text().catch(() => "");
+    console.error("LINE 通知失敗", push.status, detail);
+    throw new Error(`LINE 推播失敗（${push.status}）${detail.slice(0, 200)}`);
+  }
 }
