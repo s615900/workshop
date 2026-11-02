@@ -183,7 +183,7 @@ export default function BookingForm() {
         <section className={cardCls}>
           <StepTitle n={2}>填寫資料</StepTitle>
           <p className="mb-4 rounded-lg bg-decathlon/10 px-3 py-2 text-sm font-medium text-decathlon">
-            {selected.code} {selected.name}
+            {selected.name}
             {lineName && <span className="text-zinc-500">　LINE：{lineName}</span>}
           </p>
           <div className="grid gap-4 sm:grid-cols-2">

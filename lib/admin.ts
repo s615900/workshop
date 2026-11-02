@@ -71,7 +71,25 @@ export type AdminRow = {
 
 const pick = (headers: string[], names: string[]) => headers.findIndex((h) => names.includes(h));
 
-async function readDept(dept: Dept): Promise<AdminRow[]> {
+// 讀該分頁「狀態」欄的下拉選單選項（以最新一筆資料那格的設定為準）；讀不到就回傳空陣列
+async function readStatusOptions(dept: Dept, statusCol: number, row: number): Promise<string[]> {
+  if (statusCol < 0) return [];
+  try {
+    const L = columnLetter(statusCol);
+    const res = await getClient().spreadsheets.get({
+      spreadsheetId: sheetId(),
+      ranges: [`'${dept.sheet}'!${L}${row}`],
+      fields: "sheets.data.rowData.values.dataValidation",
+    });
+    const cond = res.data.sheets?.[0]?.data?.[0]?.rowData?.[0]?.values?.[0]?.dataValidation?.condition;
+    if (cond?.type !== "ONE_OF_LIST") return [];
+    return (cond.values ?? []).map((v) => text(v.userEnteredValue)).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+async function readDept(dept: Dept): Promise<{ rows: AdminRow[]; statuses: string[] }> {
   const res = await getClient().spreadsheets.values.get({
     spreadsheetId: sheetId(),
     range: `'${dept.sheet}'!A:Z`,
@@ -108,7 +126,10 @@ async function readDept(dept: Dept): Promise<AdminRow[]> {
       canNotify: get(r, col.line) !== "",
     });
   }
-  return rows.reverse();
+  const lastRow = rows.length ? rows[rows.length - 1].row : dept.headerRow + 1;
+  const listed = await readStatusOptions(dept, col.status, lastRow);
+  const used = [...new Set(rows.map((r) => r.status).filter(Boolean))];
+  return { rows: rows.reverse(), statuses: listed.length ? listed : [...new Set([...DEFAULT_STATUSES, ...used])] };
 }
 
 export async function listBookings(deptId?: string) {
@@ -116,12 +137,14 @@ export async function listBookings(deptId?: string) {
   const settled = await Promise.allSettled(depts.map(readDept));
   const rows: AdminRow[] = [];
   const failed: string[] = [];
+  const statusMap: Record<string, string[]> = {};
   settled.forEach((s, i) => {
-    if (s.status === "fulfilled") rows.push(...s.value);
-    else failed.push(depts[i].name);
+    if (s.status === "fulfilled") {
+      rows.push(...s.value.rows);
+      statusMap[depts[i].id] = s.value.statuses;
+    } else failed.push(depts[i].name);
   });
-  const statuses = [...new Set([...DEFAULT_STATUSES, ...rows.map((r) => r.status).filter(Boolean)])];
-  return { rows, statuses, failed };
+  return { rows, statusMap, failed };
 }
 
 // 確認指定列的維修編號沒有被改過，避免寫錯列

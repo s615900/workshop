@@ -28,7 +28,7 @@ export default function AdminPanel() {
   const [loginErr, setLoginErr] = useState("");
 
   const [rows, setRows] = useState<Row[]>([]);
-  const [statuses, setStatuses] = useState<string[]>([]);
+  const [statusMap, setStatusMap] = useState<Record<string, string[]>>({});
   const [disabled, setDisabled] = useState<string[]>([]);
   const [failed, setFailed] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -58,7 +58,7 @@ export default function AdminPanel() {
       try {
         const j = await call(password, { action: "list" });
         setRows(j.rows);
-        setStatuses(j.statuses);
+        setStatusMap(j.statusMap);
         setDisabled(j.disabled);
         setFailed(j.failed);
       } catch (e) {
@@ -134,6 +134,9 @@ export default function AdminPanel() {
       setMsg(e instanceof Error ? e.message : "更新失敗");
     }
   }
+
+  // 狀態選項依部門而不同；沒選部門時不提供狀態篩選
+  const filterStatuses = deptFilter ? (statusMap[deptFilter] ?? []) : [];
 
   const shown = useMemo(() => {
     const k = q.trim().toLowerCase();
@@ -215,7 +218,7 @@ export default function AdminPanel() {
                 return (
                   <li key={d.id} className="flex items-center justify-between py-3">
                     <span className="font-semibold">
-                      {d.code} {d.name}
+                      {d.name}
                     </span>
                     <button
                       onClick={() => toggleDept(d.id)}
@@ -237,17 +240,25 @@ export default function AdminPanel() {
                 placeholder="搜尋編號／姓名／電話／商品"
                 className="min-w-0 flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm"
               />
-              <select value={deptFilter} onChange={(e) => setDeptFilter(e.target.value)} className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm">
+              <select value={deptFilter} onChange={(e) => {
+                  setDeptFilter(e.target.value);
+                  setStatusFilter("");
+                }} className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm">
                 <option value="">全部部門</option>
                 {DEPARTMENTS.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.code} {d.name}
+                    {d.name}
                   </option>
                 ))}
               </select>
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm">
-                <option value="">全部狀態</option>
-                {statuses.map((s) => (
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                disabled={!deptFilter}
+                className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm disabled:opacity-50"
+              >
+                <option value="">{deptFilter ? "全部狀態" : "先選部門"}</option>
+                {filterStatuses.map((s) => (
                   <option key={s}>{s}</option>
                 ))}
               </select>
@@ -275,8 +286,8 @@ export default function AdminPanel() {
                       onChange={(e) => changeStatus(r, e.target.value)}
                       className="rounded-lg border border-zinc-300 bg-zinc-50 px-2 py-1.5 text-sm"
                     >
-                      {!statuses.includes(r.status) && <option value={r.status}>{r.status || "（未設定）"}</option>}
-                      {statuses.map((s) => (
+                      {!(statusMap[r.dept] ?? []).includes(r.status) && <option value={r.status}>{r.status || "（未設定）"}</option>}
+                      {(statusMap[r.dept] ?? []).map((s) => (
                         <option key={s}>{s}</option>
                       ))}
                     </select>
