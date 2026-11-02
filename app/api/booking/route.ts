@@ -1,3 +1,4 @@
+import { getDisabledDepartments } from "@/lib/admin";
 import { findDepartment } from "@/lib/departments";
 import { pushBookingCard } from "@/lib/line";
 import { createBooking } from "@/lib/sheets";
@@ -23,6 +24,10 @@ export async function POST(request: Request) {
   const dept = findDepartment(String(department ?? ""));
   if (!dept || !name || !contactPhone || !productName || !problem) {
     return Response.json({ error: "資料不完整" }, { status: 400 });
+  }
+
+  if ((await getDisabledDepartments()).includes(dept.id)) {
+    return Response.json({ error: "這個部門目前暫停收件" }, { status: 400 });
   }
 
   const line = await verifyLine(String(idToken ?? ""));

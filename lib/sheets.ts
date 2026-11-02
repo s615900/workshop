@@ -26,7 +26,7 @@ const DATE_FORMATS: Partial<Record<keyof typeof HEADERS, string>> = {
 
 export type BookingRecord = Record<keyof typeof HEADERS, string>;
 
-function getClient() {
+export function getClient() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   // 容忍貼到 Vercel 時多出的引號，並把字面上的 \n 還原成換行
   const key = process.env.GOOGLE_PRIVATE_KEY?.trim()
@@ -41,7 +41,7 @@ function getClient() {
   return google.sheets({ version: "v4", auth });
 }
 
-function columnLetter(index: number) {
+export function columnLetter(index: number) {
   let n = index + 1;
   let s = "";
   while (n > 0) {

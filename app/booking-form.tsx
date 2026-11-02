@@ -48,6 +48,14 @@ export default function BookingForm() {
   const [idToken, setIdToken] = useState("");
   const [lineName, setLineName] = useState("");
   const [isFriend, setIsFriend] = useState<boolean | null>(null);
+  // 後台停用的部門不顯示在選單
+  const [disabled, setDisabled] = useState<string[]>([]);
+  useEffect(() => {
+    fetch("/api/departments")
+      .then((r) => r.json())
+      .then((j) => setDisabled(j.disabled ?? []))
+      .catch(() => {});
+  }, []);
 
   // 必須先登入 LINE 才能登記；登入後取得 LINE 姓名與 ID token（後端會再驗證）
   useEffect(() => {
@@ -144,7 +152,7 @@ export default function BookingForm() {
       <section className={cardCls}>
         <StepTitle n={1}>選擇維修部門</StepTitle>
         <div className="grid grid-cols-2 gap-3">
-          {DEPARTMENTS.map((d) => {
+          {DEPARTMENTS.filter((d) => !disabled.includes(d.id)).map((d) => {
             const on = dept === d.id;
             return (
               <button
