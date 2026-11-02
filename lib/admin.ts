@@ -92,7 +92,7 @@ async function readStatusOptions(dept: Dept, statusCol: number, row: number): Pr
 async function readDept(dept: Dept): Promise<{ rows: AdminRow[]; statuses: string[] }> {
   const res = await getClient().spreadsheets.values.get({
     spreadsheetId: sheetId(),
-    range: `'${dept.sheet}'!A:Z`,
+    range: `'${dept.sheet}'!A:AZ`,
   });
   const values = res.data.values ?? [];
   const headers = (values[dept.headerRow - 1] ?? []).map(text);
@@ -179,6 +179,48 @@ function pickupDeadline() {
   return { month: d.getUTCMonth() + 1, day: d.getUTCDate() };
 }
 
+const BLUE = "#3643BA";
+
+// 取件通知小卡片（LINE Flex Message），風格與登記完成卡片一致
+function pickupCard(bookingId: string, month: number, day: number) {
+  const small = (t: string, extra: object = {}) => ({ type: "text", text: t, size: "sm", color: "#444444", wrap: true, ...extra });
+  return {
+    type: "flex",
+    altText: `維修完成通知 ${bookingId}，請於${month}月${day}日前取件`,
+    contents: {
+      type: "bubble",
+      header: {
+        type: "box",
+        layout: "vertical",
+        backgroundColor: BLUE,
+        paddingAll: "16px",
+        contents: [{ type: "text", text: "維修完成通知", color: "#FFFFFF", weight: "bold", size: "lg" }],
+      },
+      body: {
+        type: "box",
+        layout: "vertical",
+        spacing: "md",
+        contents: [
+          small("您的維修商品已維修完成", { color: "#222222" }),
+          { type: "text", text: "維修編號", size: "sm", color: "#888888", margin: "md" },
+          { type: "text", text: bookingId, size: "3xl", weight: "bold", color: BLUE },
+          { type: "separator", margin: "md" },
+          { type: "text", text: "取件期限", size: "sm", color: "#888888" },
+          { type: "text", text: `${month}月${day}日前`, size: "xl", weight: "bold", color: "#222222" },
+          small("請至迪卡儂三重店維修工作室領取商品，逾期恕不負擔保管責任。", { margin: "md" }),
+        ],
+      },
+      footer: {
+        type: "box",
+        layout: "vertical",
+        contents: [
+          { type: "text", text: "如有相關疑問，可直接透過本聊天室視窗與我們聯繫。迪卡儂三重店謝謝您。", size: "xs", color: "#888888", wrap: true },
+        ],
+      },
+    },
+  };
+}
+
 export async function notifyPickup(deptId: string, row: number, bookingId: string) {
   const { month, day } = pickupDeadline();
   const token = process.env.LINE_MESSAGING_TOKEN;
@@ -201,7 +243,7 @@ export async function notifyPickup(deptId: string, row: number, bookingId: strin
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({
       to: userId,
-      messages: [{ type: "text", text: `您好，您的維修商品:編號(${bookingId})已維修完成\n請於${month}月${day}日前至迪卡儂三重店維修工作室領取商品，逾期恕不負擔保管責任。\n如有相關疑問，可直接透過本聊天室視窗與我們聯繫。迪卡儂三重店謝謝您。` }],
+      messages: [pickupCard(bookingId, month, day)],
     }),
   });
   if (!push.ok) {
