@@ -20,6 +20,18 @@ type Row = {
 const KEY = "workshop-admin-pw";
 const btn = "rounded-lg px-3 py-2 text-sm font-semibold transition disabled:opacity-40";
 
+// 接單日期在試算表是「11/2」這種沒有年份的格式：晚於今天的就當作去年
+function dateValue(s: string) {
+  const nums = s.match(/\d+/g)?.map(Number) ?? [];
+  if (nums.length < 2) return 0;
+  const now = new Date();
+  if (nums.length >= 3) return Date.UTC(nums[0] < 1000 ? nums[0] + 1911 : nums[0], nums[1] - 1, nums[2]);
+  const [m, d] = nums;
+  let t = Date.UTC(now.getFullYear(), m - 1, d);
+  if (t > now.getTime() + 2 * 86400000) t = Date.UTC(now.getFullYear() - 1, m - 1, d);
+  return t;
+}
+
 export default function AdminPanel() {
   const [pw, setPw] = useState("");
   const [authed, setAuthed] = useState(false);
@@ -36,7 +48,21 @@ export default function AdminPanel() {
   const [deptFilter, setDeptFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [q, setQ] = useState("");
+  const [sort, setSort] = useState<"new" | "old">("new");
   const [tab, setTab] = useState<"list" | "dept">("list");
+
+  // 目前的分頁記在網址 # 後面（例如 #C4、#dept），重新整理瀏覽器也會停在原本那一頁
+  useEffect(() => {
+    const h = decodeURIComponent(location.hash.slice(1));
+    if (h === "dept") setTab("dept");
+    else if (DEPARTMENTS.some((d) => d.id === h)) setDeptFilter(h);
+  }, []);
+  const go = (t: "list" | "dept", d = "") => {
+    setTab(t);
+    setDeptFilter(d);
+    setStatusFilter("");
+    history.replaceState(null, "", t === "dept" ? "#dept" : d ? `#${d}` : location.pathname + location.search);
+  };
 
   const call = useCallback(
     async (password: string, body: Record<string, unknown>) => {
@@ -142,13 +168,16 @@ export default function AdminPanel() {
 
   const shown = useMemo(() => {
     const k = q.trim().toLowerCase();
-    return rows.filter(
+    // 依接單日期排序（預設新到舊）；同一天的，後面登記（列號大）的視為較新
+    return rows
+      .filter(
       (r) =>
         (!deptFilter || r.dept === deptFilter) &&
         (!statusFilter || r.status === statusFilter) &&
         (!k || [r.bookingId, r.name, r.contactPhone, r.product].some((v) => v.toLowerCase().includes(k))),
-    );
-  }, [rows, deptFilter, statusFilter, q]);
+      )
+      .sort((a, b) => (sort === "new" ? 1 : -1) * (dateValue(b.receivedDate) - dateValue(a.receivedDate) || b.row - a.row));
+  }, [rows, deptFilter, statusFilter, q, sort]);
 
   if (checking) return <div className="p-8 text-center text-zinc-500">載入中…</div>;
 
@@ -175,7 +204,7 @@ export default function AdminPanel() {
   return (
     <div className="flex-1 bg-zinc-100 text-zinc-900">
       <header className="bg-decathlon px-4 py-4 text-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between">
+        <div className="mx-auto flex max-w-[1500px] items-center justify-between">
           <h1 className="text-xl font-extrabold">維修後台</h1>
           <button
             className="text-sm text-white/80 underline"
@@ -193,12 +222,12 @@ export default function AdminPanel() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-5">
+      <main className="mx-auto max-w-[1500px] px-4 py-5">
         <div className="mb-4 flex gap-2">
           {(["list", "dept"] as const).map((t) => (
             <button
               key={t}
-              onClick={() => setTab(t)}
+              onClick={() => go(t, t === "list" ? deptFilter : "")}
               className={`${btn} ${tab === t ? "bg-decathlon text-white" : "bg-white text-zinc-700"}`}
             >
               {t === "list" ? "登記清單" : "部門開關"}
@@ -235,6 +264,21 @@ export default function AdminPanel() {
           </div>
         ) : (
           <>
+            <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
+              {[{ id: "", name: "全部" }, ...DEPARTMENTS].map((d) => {
+                const count = rows.filter((r) => !d.id || r.dept === d.id).length;
+                return (
+                  <button
+                    key={d.id}
+                    onClick={() => go("list", d.id)}
+                    className={`${btn} shrink-0 ${deptFilter === d.id ? "bg-decathlon text-white" : "bg-white text-zinc-700"}`}
+                  >
+                    {d.name}
+                    <span className="ml-1 text-xs opacity-70">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
             <div className="mb-3 flex flex-wrap gap-2">
               <input
                 value={q}
@@ -242,16 +286,9 @@ export default function AdminPanel() {
                 placeholder="搜尋編號／姓名／電話／商品"
                 className="min-w-0 flex-1 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm"
               />
-              <select value={deptFilter} onChange={(e) => {
-                  setDeptFilter(e.target.value);
-                  setStatusFilter("");
-                }} className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm">
-                <option value="">全部部門</option>
-                {DEPARTMENTS.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
+              <select value={sort} onChange={(e) => setSort(e.target.value as "new" | "old")} className="rounded-lg border border-zinc-300 bg-white px-2 py-2 text-sm">
+                <option value="new">新到舊</option>
+                <option value="old">舊到新</option>
               </select>
               <select
                 value={statusFilter}
@@ -268,8 +305,8 @@ export default function AdminPanel() {
                 {loading ? "讀取中…" : "重新整理"}
               </button>
             </div>
-            <p className="mb-2 text-xs text-zinc-500">共 {shown.length} 筆（新的在前）</p>
-            <ul className="space-y-2">
+            <p className="mb-2 text-xs text-zinc-500">共 {shown.length} 筆（{sort === "new" ? "新的在前" : "舊的在前"}）</p>
+            <ul className="grid gap-2 xl:grid-cols-2">
               {shown.map((r) => (
                 <li key={`${r.dept}-${r.row}`} className="rounded-xl bg-white p-3 shadow-sm">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -304,7 +341,7 @@ export default function AdminPanel() {
                   </div>
                 </li>
               ))}
-              {!loading && shown.length === 0 && <li className="py-8 text-center text-zinc-400">沒有資料</li>}
+              {!loading && shown.length === 0 && <li className="col-span-full py-8 text-center text-zinc-400">沒有資料</li>}
             </ul>
           </>
         )}
