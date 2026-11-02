@@ -52,8 +52,10 @@ export default function BookingForm() {
   // 必須先登入 LINE 才能登記；登入後取得 LINE 姓名與 ID token（後端會再驗證）
   useEffect(() => {
     (async () => {
-      // 網址加 ?preview 只看畫面，不能送出
-      if (new URLSearchParams(location.search).has("preview")) return setMode("preview");
+      // 網址加 ?preview，或在本機（localhost）開啟時，只看畫面不需登入，也不能送出
+      if (new URLSearchParams(location.search).has("preview") || /^(localhost|127\.0\.0\.1|192\.168\.|10\.)/.test(location.hostname)) {
+        return setMode("preview");
+      }
       const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
       if (!liffId) return setMode("failed");
       const { default: liff } = await import("@line/liff");
@@ -162,7 +164,7 @@ export default function BookingForm() {
                 >
                   {d.code}
                 </span>
-                <span className="font-semibold leading-tight">{d.name}</span>
+                <span className="whitespace-pre-line font-semibold leading-tight">{d.cardName ?? d.name}</span>
               </button>
             );
           })}
@@ -183,8 +185,8 @@ export default function BookingForm() {
             <Field label="連絡電話" required>
               <input name="contactPhone" required type="tel" className={inputCls} />
             </Field>
-            <Field label="會員電話" required>
-              <input name="phone" required type="tel" className={inputCls} />
+            <Field label="會員電話">
+              <input name="phone" type="tel" className={inputCls} />
             </Field>
             <Field label="購買日期">
               <input name="purchaseDate" type="date" className={`${inputCls} date-input`} />

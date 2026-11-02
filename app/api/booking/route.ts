@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   const { department, name, contactPhone, phone, productName, purchaseDate, problem, idToken } = body ?? {};
 
   const dept = findDepartment(String(department ?? ""));
-  if (!dept || !name || !contactPhone || !phone || !productName || !problem) {
+  if (!dept || !name || !contactPhone || !productName || !problem) {
     return Response.json({ error: "資料不完整" }, { status: 400 });
   }
 
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       receivedDate,
       name,
       contactPhone,
-      memberPhone: phone,
+      memberPhone: phone ?? "",
       product: productName,
       purchaseDate: purchaseDate ?? "",
       problem,
