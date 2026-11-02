@@ -173,7 +173,14 @@ export async function updateStatus(deptId: string, row: number, bookingId: strin
   });
 }
 
+// 取件期限 = 通知當天（台北時間）起算 5 天後
+function pickupDeadline() {
+  const d = new Date(Date.now() + 8 * 3600000 + 5 * 86400000);
+  return { month: d.getUTCMonth() + 1, day: d.getUTCDate() };
+}
+
 export async function notifyPickup(deptId: string, row: number, bookingId: string) {
+  const { month, day } = pickupDeadline();
   const token = process.env.LINE_MESSAGING_TOKEN;
   if (!token) throw new Error("Vercel 上缺少環境變數 LINE_MESSAGING_TOKEN");
   const { dept, headers } = await locate(deptId, row, bookingId);
@@ -194,7 +201,7 @@ export async function notifyPickup(deptId: string, row: number, bookingId: strin
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({
       to: userId,
-      messages: [{ type: "text", text: `您好，您的維修（編號 ${bookingId}）已處理完畢，歡迎至迪卡儂三重店取件，謝謝！` }],
+      messages: [{ type: "text", text: `您好，您的維修商品:編號(${bookingId})已維修完成\n請於${month}月${day}日前至迪卡儂三重店維修工作室領取商品，逾期恕不負擔保管責任。\n如有相關疑問，可直接透過本聊天室視窗與我們聯繫。迪卡儂三重店謝謝您。` }],
     }),
   });
   if (!push.ok) {

@@ -114,7 +114,9 @@ export default function AdminPanel() {
   }
 
   async function notify(r: Row) {
-    if (!confirm(`要用 LINE 通知 ${r.name} 取件嗎？（${r.bookingId}）`)) return;
+    // 取件期限 = 今天（台北時間）起算 5 天後，後端會用同樣的算法
+    const due = new Date(Date.now() + 8 * 3600000 + 5 * 86400000);
+    if (!confirm(`要用 LINE 通知 ${r.name} 取件嗎？\n編號 ${r.bookingId}，請於 ${due.getUTCMonth() + 1}月${due.getUTCDate()}日前領取`)) return;
     setMsg("");
     try {
       await call(pw, { action: "notify", dept: r.dept, row: r.row, bookingId: r.bookingId });
