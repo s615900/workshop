@@ -241,7 +241,7 @@ export default function AdminPanel() {
                 <option value="">全部部門</option>
                 {DEPARTMENTS.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.name}
+                    {d.code} {d.name}
                   </option>
                 ))}
               </select>
