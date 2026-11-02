@@ -179,10 +179,14 @@ export async function notifyPickup(deptId: string, row: number, bookingId: strin
   const { dept, headers } = await locate(deptId, row, bookingId);
   const c = headers.indexOf("LINE User ID");
   if (c < 0) throw new Error("這個分頁沒有「LINE User ID」欄");
-  const res = await getClient().spreadsheets.values.get({
-    spreadsheetId: sheetId(),
-    range: `'${dept.sheet}'!${columnLetter(c)}${row}`,
-  });
+  const sc = headers.indexOf("狀態");
+  const [res, st] = await Promise.all([
+    getClient().spreadsheets.values.get({ spreadsheetId: sheetId(), range: `'${dept.sheet}'!${columnLetter(c)}${row}` }),
+    sc >= 0
+      ? getClient().spreadsheets.values.get({ spreadsheetId: sheetId(), range: `'${dept.sheet}'!${columnLetter(sc)}${row}` })
+      : Promise.resolve(null),
+  ]);
+  if (text(st?.data.values?.[0]?.[0]) !== "待取件") throw new Error("狀態要是「待取件」才能通知");
   const userId = text(res.data.values?.[0]?.[0]);
   if (!userId) throw new Error("這筆沒有 LINE 資料，無法通知");
   const push = await fetch("https://api.line.me/v2/bot/message/push", {

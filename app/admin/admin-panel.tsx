@@ -293,8 +293,8 @@ export default function AdminPanel() {
                     </select>
                     <button
                       onClick={() => notify(r)}
-                      disabled={!r.canNotify}
-                      title={r.canNotify ? "" : "沒有 LINE 資料"}
+                      disabled={!r.canNotify || r.status !== "待取件"}
+                      title={r.status !== "待取件" ? "狀態要是「待取件」才能通知" : r.canNotify ? "" : "沒有 LINE 資料"}
                       className={`${btn} bg-green-600 py-1.5 text-white`}
                     >
                       通知取件
