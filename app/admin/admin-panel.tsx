@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { DEPARTMENTS } from "@/lib/departments";
 
 type Row = {
@@ -18,6 +18,8 @@ type Row = {
 };
 
 const KEY = "workshop-admin-pw";
+// 一次只畫這麼多張卡片，其餘按「顯示更多」再出現（三千多張一次畫出來，手機會很卡）
+const PAGE = 60;
 const btn = "rounded-lg px-3 py-2 text-sm font-semibold transition disabled:opacity-40";
 
 // 維修編號尾端的數字（C4-783 → 783）
@@ -41,6 +43,9 @@ export default function AdminPanel() {
   const [deptFilter, setDeptFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [q, setQ] = useState("");
+  const dq = useDeferredValue(q);
+  // 顯示筆數跟著篩選條件記；換條件時自動回到只顯示前面幾筆
+  const [more, setMore] = useState({ key: "", n: PAGE });
   const [sort, setSort] = useState<"new" | "old">("new");
   const [tab, setTab] = useState<"list" | "dept">("list");
 
@@ -113,14 +118,22 @@ export default function AdminPanel() {
       saved = sessionStorage.getItem(KEY) ?? "";
     } catch {}
     if (!saved) return setChecking(false);
-    call(saved, { action: "login" })
-      .then(() => {
+    // 直接讀清單（密碼錯會回 401），省掉先登入再讀的一次來回
+    setLoading(true);
+    call(saved, { action: "list" })
+      .then((j) => {
         setPw(saved);
         setAuthed(true);
-        load(saved);
+        setRows(j.rows);
+        setStatusMap(j.statusMap);
+        setDisabled(j.disabled);
+        setFailed(j.failed);
       })
       .catch(() => {})
-      .finally(() => setChecking(false));
+      .finally(() => {
+        setLoading(false);
+        setChecking(false);
+      });
   }, [call, load]);
 
   async function login(e: React.FormEvent) {
@@ -191,7 +204,7 @@ export default function AdminPanel() {
   const filterStatuses = deptFilter ? (statusMap[deptFilter] ?? []) : [];
 
   const shown = useMemo(() => {
-    const k = q.trim().toLowerCase();
+    const k = dq.trim().toLowerCase();
     // 依維修編號排序（預設新到舊）
     return rows
       .filter(
@@ -206,7 +219,14 @@ export default function AdminPanel() {
         if (dept) return dept;
         return (sort === "new" ? -1 : 1) * (numValue(a.bookingId) - numValue(b.bookingId) || a.row - b.row);
       });
-  }, [rows, deptFilter, statusFilter, q, sort]);
+  }, [rows, deptFilter, statusFilter, dq, sort]);
+  const filterKey = [deptFilter, statusFilter, dq, sort].join("|");
+  const limit = more.key === filterKey ? more.n : PAGE;
+  const counts = useMemo(() => {
+    const m: Record<string, number> = { "": rows.length };
+    for (const r of rows) m[r.dept] = (m[r.dept] ?? 0) + 1;
+    return m;
+  }, [rows]);
 
   if (checking) return <div className="p-8 text-center text-zinc-500">載入中…</div>;
 
@@ -295,7 +315,7 @@ export default function AdminPanel() {
           <>
             <div className="-mx-4 mb-3 flex gap-2 overflow-x-auto px-4 pb-1">
               {[{ id: "", name: "全部" }, ...DEPARTMENTS].map((d) => {
-                const count = rows.filter((r) => !d.id || r.dept === d.id).length;
+                const count = counts[d.id] ?? 0;
                 return (
                   <button
                     key={d.id}
@@ -336,7 +356,7 @@ export default function AdminPanel() {
             </div>
             <p className="mb-2 text-xs text-zinc-500">共 {shown.length} 筆（{sort === "new" ? "新的在前" : "舊的在前"}）</p>
             <ul className="grid gap-2 xl:grid-cols-2">
-              {shown.map((r) => (
+              {shown.slice(0, limit).map((r) => (
                 <li key={`${r.dept}-${r.row}`} className="rounded-xl bg-white p-3 shadow-sm">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                     <span className="font-extrabold text-decathlon">{r.bookingId}</span>
@@ -396,6 +416,11 @@ export default function AdminPanel() {
               ))}
               {!loading && shown.length === 0 && <li className="col-span-full py-8 text-center text-zinc-400">沒有資料</li>}
             </ul>
+            {shown.length > limit && (
+              <button onClick={() => setMore({ key: filterKey, n: limit + PAGE * 2 })} className={`${btn} mt-3 w-full bg-white py-3 text-zinc-700`}>
+                顯示更多（還有 {shown.length - limit} 筆）
+              </button>
+            )}
           </>
         )}
       </main>

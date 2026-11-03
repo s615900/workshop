@@ -26,7 +26,11 @@ const DATE_FORMATS: Partial<Record<keyof typeof HEADERS, string>> = {
 
 export type BookingRecord = Record<keyof typeof HEADERS, string>;
 
+// 重複使用同一個連線（Google 通行證會自動快取、到期才重新取得），不用每次讀寫都重新登入
+let cached: ReturnType<typeof google.sheets> | null = null;
+
 export function getClient() {
+  if (cached) return cached;
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   // 容忍貼到 Vercel 時多出的引號，並把字面上的 \n 還原成換行
   const key = process.env.GOOGLE_PRIVATE_KEY?.trim()
@@ -38,7 +42,8 @@ export function getClient() {
     key,
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });
-  return google.sheets({ version: "v4", auth });
+  cached = google.sheets({ version: "v4", auth });
+  return cached;
 }
 
 export function columnLetter(index: number) {

@@ -89,12 +89,9 @@ async function readStatusOptions(dept: Dept, statusCol: number, row: number): Pr
   }
 }
 
-async function readDept(dept: Dept): Promise<{ rows: AdminRow[]; statuses: string[] }> {
-  const res = await getClient().spreadsheets.values.get({
-    spreadsheetId: sheetId(),
-    range: `'${dept.sheet}'!A:AZ`,
-  });
-  const values = res.data.values ?? [];
+type DeptColumns = { status: number; date: number; name: number; phone: number; product: number; problem: number; line: number };
+
+function parseDept(dept: Dept, values: unknown[][]): { rows: AdminRow[]; col: DeptColumns } {
   const headers = (values[dept.headerRow - 1] ?? []).map(text);
   const col = {
     status: pick(headers, ["狀態"]),
@@ -126,23 +123,72 @@ async function readDept(dept: Dept): Promise<{ rows: AdminRow[]; statuses: strin
       canNotify: get(r, col.line) !== "",
     });
   }
-  const lastRow = rows.length ? rows[rows.length - 1].row : dept.headerRow + 1;
-  const listed = await readStatusOptions(dept, col.status, lastRow);
-  const used = [...new Set(rows.map((r) => r.status).filter(Boolean))];
-  return { rows: rows.reverse(), statuses: listed.length ? listed : [...new Set([...DEFAULT_STATUSES, ...used])] };
+  return { rows, col };
 }
 
+// 一次讀完所有部門（1 次讀資料 + 1 次讀狀態下拉選單），不再每個部門分開讀好幾次
 export async function listBookings(deptId?: string) {
-  const depts = deptId ? DEPARTMENTS.filter((d) => d.id === deptId) : DEPARTMENTS;
-  const settled = await Promise.allSettled(depts.map(readDept));
+  const depts = deptId ? DEPARTMENTS.filter((d) => d.id === deptId) : [...DEPARTMENTS];
+  const client = getClient();
+  const spreadsheetId = sheetId();
   const rows: AdminRow[] = [];
   const failed: string[] = [];
   const statusMap: Record<string, string[]> = {};
-  settled.forEach((s, i) => {
-    if (s.status === "fulfilled") {
-      rows.push(...s.value.rows);
-      statusMap[depts[i].id] = s.value.statuses;
-    } else failed.push(depts[i].name);
+
+  let ranges: unknown[][][];
+  try {
+    const res = await client.spreadsheets.values.batchGet({
+      spreadsheetId,
+      ranges: depts.map((d) => `'${d.sheet}'!A:AZ`),
+    });
+    ranges = (res.data.valueRanges ?? []).map((r) => (r.values ?? []) as unknown[][]);
+  } catch {
+    // 某個分頁讀不到（例如被改名）會讓整批失敗，這時退回逐一讀取，找出是哪個分頁
+    ranges = await Promise.all(
+      depts.map((d) =>
+        client.spreadsheets.values
+          .get({ spreadsheetId, range: `'${d.sheet}'!A:AZ` })
+          .then((r) => (r.data.values ?? []) as unknown[][])
+          .catch(() => null as unknown as unknown[][]),
+      ),
+    );
+  }
+
+  const parsed = depts.map((d, i) => (ranges[i] ? parseDept(d, ranges[i]) : null));
+
+  // 各分頁「狀態」欄的下拉選單選項（以最新一筆資料那格的設定為準），一次讀完
+  const cells = depts
+    .map((d, i) => {
+      const p = parsed[i];
+      if (!p || p.col.status < 0) return null;
+      const lastRow = p.rows.length ? p.rows[p.rows.length - 1].row : d.headerRow + 1;
+      return { id: d.id, range: `'${d.sheet}'!${columnLetter(p.col.status)}${lastRow}` };
+    })
+    .filter((c): c is { id: string; range: string } => !!c);
+  const listedMap: Record<string, string[]> = {};
+  if (cells.length) {
+    try {
+      const res = await client.spreadsheets.get({
+        spreadsheetId,
+        ranges: cells.map((c) => c.range),
+        fields: "sheets(properties.title,data.rowData.values.dataValidation)",
+      });
+      for (const s of res.data.sheets ?? []) {
+        const dept = depts.find((d) => d.sheet === s.properties?.title);
+        const cond = s.data?.[0]?.rowData?.[0]?.values?.[0]?.dataValidation?.condition;
+        if (!dept || cond?.type !== "ONE_OF_LIST") continue;
+        listedMap[dept.id] = (cond.values ?? []).map((v) => text(v.userEnteredValue)).filter(Boolean);
+      }
+    } catch {}
+  }
+
+  depts.forEach((d, i) => {
+    const p = parsed[i];
+    if (!p) return failed.push(d.name);
+    rows.push(...[...p.rows].reverse());
+    const listed = listedMap[d.id] ?? [];
+    const used = [...new Set(p.rows.map((r) => r.status).filter(Boolean))];
+    statusMap[d.id] = listed.length ? listed : [...new Set([...DEFAULT_STATUSES, ...used])];
   });
   return { rows, statusMap, failed };
 }
