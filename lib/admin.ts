@@ -252,3 +252,32 @@ export async function notifyPickup(deptId: string, row: number, bookingId: strin
     throw new Error(`LINE 推播失敗（${push.status}）${detail.slice(0, 200)}`);
   }
 }
+
+// 客人在 LINE 回覆「已取件」：把這位客人所有「待取件」的登記改成已取件。
+// 各部門的狀態名稱不同（有的叫「已取貨」），所以優先用該部門下拉選單裡有的那個
+export async function markPickedUp(userId: string): Promise<string[]> {
+  const api = getClient().spreadsheets.values;
+  const done: string[] = [];
+  for (const dept of DEPARTMENTS) {
+    const res = await api.get({ spreadsheetId: sheetId(), range: `'${dept.sheet}'!A:AZ` });
+    const values = res.data.values ?? [];
+    const headers = (values[dept.headerRow - 1] ?? []).map(text);
+    const sc = headers.indexOf("狀態");
+    const lc = headers.indexOf("LINE User ID");
+    if (sc < 0 || lc < 0) continue;
+    for (let i = dept.headerRow; i < values.length; i++) {
+      const r = values[i] ?? [];
+      if (text(r[lc]) !== userId || text(r[sc]) !== "待取件") continue;
+      const options = await readStatusOptions(dept, sc, i + 1);
+      const target = options.includes("已取件") ? "已取件" : options.includes("已取貨") ? "已取貨" : "已取件";
+      await api.update({
+        spreadsheetId: sheetId(),
+        range: `'${dept.sheet}'!${columnLetter(sc)}${i + 1}`,
+        valueInputOption: "RAW",
+        requestBody: { values: [[target]] },
+      });
+      done.push(text(r[0]));
+    }
+  }
+  return done;
+}
