@@ -1,4 +1,4 @@
-import { checkAdmin, getDisabledDepartments, listBookings, notifyPickup, setDisabledDepartments, updateStatus } from "@/lib/admin";
+import { checkAdmin, getDisabledDepartments, listBookings, notifyPickup, setDisabledDepartments, updateProblem, updateStatus } from "@/lib/admin";
 import { DEPARTMENTS } from "@/lib/departments";
 
 // 後台所有操作都走這支（POST，標頭帶密碼 x-admin-password）
@@ -15,6 +15,9 @@ export async function POST(request: Request) {
       }
       case "status":
         await updateStatus(String(body.dept), Number(body.row), String(body.bookingId), String(body.status ?? ""));
+        return Response.json({ ok: true });
+      case "problem":
+        await updateProblem(String(body.dept), Number(body.row), String(body.bookingId), String(body.value ?? ""));
         return Response.json({ ok: true });
       case "notify":
         await notifyPickup(String(body.dept), Number(body.row), String(body.bookingId));

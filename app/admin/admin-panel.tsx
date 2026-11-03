@@ -149,6 +149,20 @@ export default function AdminPanel() {
     }
   }
 
+  // 編輯商品狀況描述：editing 記錄正在編輯哪一筆與目前的文字
+  const [editing, setEditing] = useState<{ key: string; text: string } | null>(null);
+  async function saveProblem(r: Row) {
+    if (!editing) return;
+    setMsg("");
+    try {
+      await call(pw, { action: "problem", dept: r.dept, row: r.row, bookingId: r.bookingId, value: editing.text });
+      setRows((all) => all.map((x) => (x.dept === r.dept && x.row === r.row ? { ...x, problem: editing.text } : x)));
+      setEditing(null);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "儲存失敗");
+    }
+  }
+
   async function notify(r: Row) {
     // 取件期限 = 今天（台北時間）起算 5 天後，後端會用同樣的算法
     const due = new Date(Date.now() + 8 * 3600000 + 5 * 86400000);
@@ -333,7 +347,31 @@ export default function AdminPanel() {
                     {r.name} <span className="font-normal text-zinc-500">{r.contactPhone}</span>
                   </p>
                   <p className="text-sm text-zinc-700">{r.product}</p>
-                  {r.problem && <p className="mt-1 whitespace-pre-line text-sm text-zinc-500">{r.problem}</p>}
+                  {editing?.key === `${r.dept}-${r.row}` ? (
+                    <div className="mt-1">
+                      <textarea
+                        value={editing.text}
+                        onChange={(e) => setEditing({ key: editing.key, text: e.target.value })}
+                        rows={Math.max(3, editing.text.split("\n").length + 1)}
+                        className="w-full rounded-lg border border-zinc-300 bg-zinc-50 px-2 py-1.5 text-sm"
+                        autoFocus
+                      />
+                      <div className="mt-1 flex gap-2">
+                        <button onClick={() => saveProblem(r)} className={`${btn} bg-decathlon py-1.5 text-white`}>儲存</button>
+                        <button onClick={() => setEditing(null)} className={`${btn} bg-zinc-200 py-1.5 text-zinc-700`}>取消</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-1 flex items-start gap-2">
+                      <p className="flex-1 whitespace-pre-line text-sm text-zinc-500">{r.problem || "（無描述）"}</p>
+                      <button
+                        onClick={() => setEditing({ key: `${r.dept}-${r.row}`, text: r.problem })}
+                        className="shrink-0 text-xs text-decathlon underline"
+                      >
+                        編輯
+                      </button>
+                    </div>
+                  )}
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <select
                       value={r.status}

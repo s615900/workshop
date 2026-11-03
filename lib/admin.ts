@@ -221,6 +221,19 @@ function pickupCard(bookingId: string, month: number, day: number) {
   };
 }
 
+// 修改「商品狀況描述」（維修部位／備註那欄），欄位判斷方式與清單讀取一致
+export async function updateProblem(deptId: string, row: number, bookingId: string, value: string) {
+  const { dept, headers } = await locate(deptId, row, bookingId);
+  const c = pick(headers, ["維修部位", "維修部位及客人說明", "備註"]);
+  if (c < 0) throw new Error("這個分頁沒有可編輯的描述欄");
+  await getClient().spreadsheets.values.update({
+    spreadsheetId: sheetId(),
+    range: `'${dept.sheet}'!${columnLetter(c)}${row}`,
+    valueInputOption: "RAW",
+    requestBody: { values: [[value]] },
+  });
+}
+
 export async function notifyPickup(deptId: string, row: number, bookingId: string) {
   const { month, day } = pickupDeadline();
   const token = process.env.LINE_MESSAGING_TOKEN;
