@@ -20,16 +20,9 @@ type Row = {
 const KEY = "workshop-admin-pw";
 const btn = "rounded-lg px-3 py-2 text-sm font-semibold transition disabled:opacity-40";
 
-// 接單日期在試算表是「11/2」這種沒有年份的格式：晚於今天的就當作去年
-function dateValue(s: string) {
-  const nums = s.match(/\d+/g)?.map(Number) ?? [];
-  if (nums.length < 2) return 0;
-  const now = new Date();
-  if (nums.length >= 3) return Date.UTC(nums[0] < 1000 ? nums[0] + 1911 : nums[0], nums[1] - 1, nums[2]);
-  const [m, d] = nums;
-  let t = Date.UTC(now.getFullYear(), m - 1, d);
-  if (t > now.getTime() + 2 * 86400000) t = Date.UTC(now.getFullYear() - 1, m - 1, d);
-  return t;
+// 維修編號尾端的數字（C4-783 → 783）
+function numValue(id: string) {
+  return Number(/(\d+)\s*$/.exec(id)?.[1] ?? 0);
 }
 
 export default function AdminPanel() {
@@ -168,7 +161,7 @@ export default function AdminPanel() {
 
   const shown = useMemo(() => {
     const k = q.trim().toLowerCase();
-    // 依接單日期排序（預設新到舊）；同一天的，後面登記（列號大）的視為較新
+    // 依維修編號排序（預設新到舊）
     return rows
       .filter(
       (r) =>
@@ -176,7 +169,12 @@ export default function AdminPanel() {
         (!statusFilter || r.status === statusFilter) &&
         (!k || [r.bookingId, r.name, r.contactPhone, r.product].some((v) => v.toLowerCase().includes(k))),
       )
-      .sort((a, b) => (sort === "new" ? 1 : -1) * (dateValue(b.receivedDate) - dateValue(a.receivedDate) || b.row - a.row));
+      .sort((a, b) => {
+        // 依維修編號排序（「全部」時先依部門順序分組）；新到舊 = 編號大的在前
+        const dept = DEPARTMENTS.findIndex((d) => d.id === a.dept) - DEPARTMENTS.findIndex((d) => d.id === b.dept);
+        if (dept) return dept;
+        return (sort === "new" ? -1 : 1) * (numValue(a.bookingId) - numValue(b.bookingId) || a.row - b.row);
+      });
   }, [rows, deptFilter, statusFilter, q, sort]);
 
   if (checking) return <div className="p-8 text-center text-zinc-500">載入中…</div>;
