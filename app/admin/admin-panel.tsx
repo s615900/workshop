@@ -44,17 +44,34 @@ export default function AdminPanel() {
   const [sort, setSort] = useState<"new" | "old">("new");
   const [tab, setTab] = useState<"list" | "dept">("list");
 
-  // 目前的分頁記在網址 # 後面（例如 #C4、#dept），重新整理瀏覽器也會停在原本那一頁
+  // 目前的分頁、部門、狀態、排序都記在網址 # 後面（例如 #d=C4&s=待取件&o=old），
+  // 重新整理瀏覽器也會停在原本的條件，不會跳回全部
+  const [restored, setRestored] = useState(false);
   useEffect(() => {
-    const h = decodeURIComponent(location.hash.slice(1));
-    if (h === "dept") setTab("dept");
-    else if (DEPARTMENTS.some((d) => d.id === h)) setDeptFilter(h);
+    const p = new URLSearchParams(location.hash.slice(1));
+    if (p.get("t") === "dept") setTab("dept");
+    const d = p.get("d") ?? "";
+    if (DEPARTMENTS.some((x) => x.id === d)) {
+      setDeptFilter(d);
+      setStatusFilter(p.get("s") ?? "");
+    }
+    if (p.get("o") === "old") setSort("old");
+    setRestored(true);
   }, []);
+  useEffect(() => {
+    if (!restored) return;
+    const p = new URLSearchParams();
+    if (tab === "dept") p.set("t", "dept");
+    if (deptFilter) p.set("d", deptFilter);
+    if (deptFilter && statusFilter) p.set("s", statusFilter);
+    if (sort === "old") p.set("o", "old");
+    const h = p.toString();
+    history.replaceState(null, "", h ? `#${h}` : location.pathname + location.search);
+  }, [restored, tab, deptFilter, statusFilter, sort]);
   const go = (t: "list" | "dept", d = "") => {
     setTab(t);
     setDeptFilter(d);
     setStatusFilter("");
-    history.replaceState(null, "", t === "dept" ? "#dept" : d ? `#${d}` : location.pathname + location.search);
   };
 
   const call = useCallback(
