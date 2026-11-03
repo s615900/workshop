@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     // 推播登記完成卡片給客人；失敗只記錄，不影響登記結果
     await pushBookingCard(line.userId, {
       bookingId,
-      department: dept.sheet,
+      department: dept.name,
       name,
       productName,
       receivedDate,
