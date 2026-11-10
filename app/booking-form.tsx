@@ -62,6 +62,8 @@ export default function BookingForm() {
     (async () => {
       // 網址加 ?preview，或在本機（localhost）開啟時，只看畫面不需登入，也不能送出
       if (new URLSearchParams(location.search).has("preview") || /^(localhost|127\.0\.0\.1|192\.168\.|10\.)/.test(location.hostname)) {
+        // 預覽時網址再加 &done 可直接看「登記成功」畫面（只是示範編號，不會寫入）
+        if (new URLSearchParams(location.search).has("done")) setBookingId("C1-000");
         return setMode("preview");
       }
       const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
@@ -115,6 +117,14 @@ export default function BookingForm() {
         <p className="mt-4 text-xl font-bold">登記成功</p>
         <p className="mt-4 text-sm text-zinc-500">維修編號</p>
         <p className="mt-1 text-2xl font-extrabold tracking-wide text-decathlon">{bookingId}</p>
+        <div className="mt-4 rounded-xl border-2 border-red-600 bg-red-50 px-3 py-3 text-center shadow-sm">
+          <p className="text-sm font-extrabold text-red-600">⚠️ 重要提醒</p>
+          <p className="mt-1.5 text-[17px] font-extrabold leading-relaxed text-red-700">
+            <span className="block">請將需維修的商品拍照</span>
+            <span className="block">傳到工作室 LINE 聊天室</span>
+            <span className="block">謝謝您！</span>
+          </p>
+        </div>
         <p className="mt-4 text-sm text-zinc-500">維修保養完畢後，迪卡儂將以 LINE 訊息通知您取件。</p>
         <div className="mt-5">
           {isFriend ? (
