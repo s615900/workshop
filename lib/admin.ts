@@ -35,7 +35,35 @@ export async function getDisabledDepartments(): Promise<string[]> {
   }
 }
 
-export async function setDisabledDepartments(ids: string[]) {
+// 各部門接待人員名單（存在「後台設定」分頁 B1，JSON：{"C1":["小明","小華"],...}）
+export async function getStaff(): Promise<Record<string, string[]>> {
+  try {
+    const res = await getClient().spreadsheets.values.get({
+      spreadsheetId: sheetId(),
+      range: `'${SETTINGS_TAB}'!B1`,
+    });
+    const j = JSON.parse(text(res.data.values?.[0]?.[0]) || "{}");
+    const out: Record<string, string[]> = {};
+    for (const d of DEPARTMENTS) {
+      if (Array.isArray(j[d.id])) out[d.id] = j[d.id].map(text).filter(Boolean);
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export async function setStaff(staff: Record<string, string[]>) {
+  await ensureSettingsTab();
+  await getClient().spreadsheets.values.update({
+    spreadsheetId: sheetId(),
+    range: `'${SETTINGS_TAB}'!B1`,
+    valueInputOption: "RAW",
+    requestBody: { values: [[JSON.stringify(staff)]] },
+  });
+}
+
+async function ensureSettingsTab() {
   const client = getClient();
   const spreadsheetId = sheetId();
   const meta = await client.spreadsheets.get({ spreadsheetId, fields: "sheets.properties.title" });
@@ -45,8 +73,12 @@ export async function setDisabledDepartments(ids: string[]) {
       requestBody: { requests: [{ addSheet: { properties: { title: SETTINGS_TAB } } }] },
     });
   }
-  await client.spreadsheets.values.update({
-    spreadsheetId,
+}
+
+export async function setDisabledDepartments(ids: string[]) {
+  await ensureSettingsTab();
+  await getClient().spreadsheets.values.update({
+    spreadsheetId: sheetId(),
     range: `'${SETTINGS_TAB}'!A1`,
     valueInputOption: "RAW",
     requestBody: { values: [[ids.join(",")]] },
@@ -64,6 +96,8 @@ export type AdminRow = {
   receivedDate: string;
   name: string;
   contactPhone: string;
+  memberPhone: string;
+  staff: string;
   product: string;
   problem: string;
   canNotify: boolean;
@@ -89,7 +123,7 @@ async function readStatusOptions(dept: Dept, statusCol: number, row: number): Pr
   }
 }
 
-type DeptColumns = { status: number; date: number; name: number; phone: number; product: number; problem: number; line: number };
+type DeptColumns = { status: number; date: number; name: number; phone: number; memberPhone: number; staff: number; product: number; problem: number; line: number };
 
 function parseDept(dept: Dept, values: unknown[][]): { rows: AdminRow[]; col: DeptColumns } {
   const headers = (values[dept.headerRow - 1] ?? []).map(text);
@@ -98,6 +132,8 @@ function parseDept(dept: Dept, values: unknown[][]): { rows: AdminRow[]; col: De
     date: pick(headers, ["接單日期"]),
     name: pick(headers, ["顧客姓名"]),
     phone: pick(headers, ["連絡電話"]),
+    memberPhone: pick(headers, ["會員電話"]),
+    staff: pick(headers, ["接單人"]),
     product: pick(headers, ["商品名稱", "燙印商品"]),
     problem: pick(headers, ["維修部位", "維修部位及客人說明", "備註"]),
     line: pick(headers, ["LINE User ID"]),
@@ -118,6 +154,8 @@ function parseDept(dept: Dept, values: unknown[][]): { rows: AdminRow[]; col: De
       receivedDate: get(r, col.date),
       name: get(r, col.name),
       contactPhone: get(r, col.phone),
+      memberPhone: get(r, col.memberPhone),
+      staff: get(r, col.staff),
       product: get(r, col.product),
       problem: get(r, col.problem),
       canNotify: get(r, col.line) !== "",

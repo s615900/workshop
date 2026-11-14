@@ -1,4 +1,4 @@
-import { getDisabledDepartments } from "@/lib/admin";
+import { getDisabledDepartments, getStaff } from "@/lib/admin";
 import { findDepartment } from "@/lib/departments";
 import { pushBookingCard } from "@/lib/line";
 import { createBooking } from "@/lib/sheets";
@@ -19,7 +19,7 @@ async function verifyLine(idToken: string) {
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
-  const { department, name, contactPhone, phone, productName, purchaseDate, problem, idToken } = body ?? {};
+  const { department, name, contactPhone, phone, staff, productName, purchaseDate, problem, idToken } = body ?? {};
 
   const dept = findDepartment(String(department ?? ""));
   if (!dept || !name || !contactPhone || !productName || !problem) {
@@ -28,6 +28,12 @@ export async function POST(request: Request) {
 
   if ((await getDisabledDepartments()).includes(dept.id)) {
     return Response.json({ error: "這個部門目前暫停收件" }, { status: 400 });
+  }
+
+  // 該部門有設定接待人員時，必須選其中一位
+  const staffList = (await getStaff())[dept.id] ?? [];
+  if (staffList.length && !staffList.includes(String(staff ?? ""))) {
+    return Response.json({ error: "請選擇接待人員" }, { status: 400 });
   }
 
   const line = await verifyLine(String(idToken ?? ""));
@@ -47,6 +53,7 @@ export async function POST(request: Request) {
       name,
       contactPhone,
       memberPhone: phone ?? "",
+      staff: staffList.length ? String(staff) : "",
       product: productName,
       purchaseDate: purchaseDate ?? "",
       problem,

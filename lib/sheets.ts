@@ -10,6 +10,7 @@ const HEADERS = {
   receivedDate: ["接單日期"],
   name: ["顧客姓名"],
   contactPhone: ["連絡電話"],
+  staff: ["接單人"],
   memberPhone: ["會員電話"],
   product: ["商品名稱", "燙印商品"],
   purchaseDate: ["購買日期"],

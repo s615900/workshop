@@ -50,10 +50,14 @@ export default function BookingForm() {
   const [isFriend, setIsFriend] = useState<boolean | null>(null);
   // 後台停用的部門不顯示在選單
   const [disabled, setDisabled] = useState<string[]>([]);
+  const [staffMap, setStaffMap] = useState<Record<string, string[]>>({});
   useEffect(() => {
     fetch("/api/departments")
       .then((r) => r.json())
-      .then((j) => setDisabled(j.disabled ?? []))
+      .then((j) => {
+        setDisabled(j.disabled ?? []);
+        setStaffMap(j.staff ?? {});
+      })
       .catch(() => {});
   }, []);
 
@@ -197,6 +201,18 @@ export default function BookingForm() {
             {lineName && <span className="text-zinc-500">　LINE：{lineName}</span>}
           </p>
           <div className="grid gap-4 sm:grid-cols-2">
+            {(staffMap[dept] ?? []).length > 0 && (
+              <div className="sm:col-span-2">
+                <Field label="接待人員" required>
+                  <select name="staff" required defaultValue="" className={inputCls}>
+                    <option value="" disabled>請選擇接待人員</option>
+                    {staffMap[dept].map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+            )}
             <Field label="姓名" required>
               <input name="name" required className={inputCls} />
             </Field>

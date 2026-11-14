@@ -1,6 +1,7 @@
-import { getDisabledDepartments } from "@/lib/admin";
+import { getDisabledDepartments, getStaff } from "@/lib/admin";
 
-// 客人登記頁用：回傳目前被後台停用的部門 id
+// 客人登記頁用：回傳目前被後台停用的部門 id 與各部門接待人員
 export async function GET() {
-  return Response.json({ disabled: await getDisabledDepartments() });
+  const [disabled, staff] = await Promise.all([getDisabledDepartments(), getStaff()]);
+  return Response.json({ disabled, staff });
 }

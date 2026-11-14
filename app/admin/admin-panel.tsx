@@ -12,6 +12,8 @@ type Row = {
   receivedDate: string;
   name: string;
   contactPhone: string;
+  memberPhone: string;
+  staff: string;
   product: string;
   problem: string;
   canNotify: boolean;
@@ -37,6 +39,8 @@ export default function AdminPanel() {
   const [rows, setRows] = useState<Row[]>([]);
   const [statusMap, setStatusMap] = useState<Record<string, string[]>>({});
   const [disabled, setDisabled] = useState<string[]>([]);
+  const [staff, setStaff] = useState<Record<string, string[]>>({});
+  const [newStaff, setNewStaff] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
@@ -47,7 +51,7 @@ export default function AdminPanel() {
   // 顯示筆數跟著篩選條件記；換條件時自動回到只顯示前面幾筆
   const [more, setMore] = useState({ key: "", n: PAGE });
   const [sort, setSort] = useState<"new" | "old">("new");
-  const [tab, setTab] = useState<"list" | "dept">("list");
+  const [tab, setTab] = useState<"list" | "dept" | "staff">("list");
 
   // 目前的分頁、部門、狀態、排序都記在網址 # 後面（例如 #d=C4&s=待取件&o=old），
   // 重新整理瀏覽器也會停在原本的條件，不會跳回全部
@@ -55,6 +59,7 @@ export default function AdminPanel() {
   useEffect(() => {
     const p = new URLSearchParams(location.hash.slice(1));
     if (p.get("t") === "dept") setTab("dept");
+    if (p.get("t") === "staff") setTab("staff");
     const d = p.get("d") ?? "";
     if (DEPARTMENTS.some((x) => x.id === d)) {
       setDeptFilter(d);
@@ -66,14 +71,14 @@ export default function AdminPanel() {
   useEffect(() => {
     if (!restored) return;
     const p = new URLSearchParams();
-    if (tab === "dept") p.set("t", "dept");
+    if (tab !== "list") p.set("t", tab);
     if (deptFilter) p.set("d", deptFilter);
     if (deptFilter && statusFilter) p.set("s", statusFilter);
     if (sort === "old") p.set("o", "old");
     const h = p.toString();
     history.replaceState(null, "", h ? `#${h}` : location.pathname + location.search);
   }, [restored, tab, deptFilter, statusFilter, sort]);
-  const go = (t: "list" | "dept", d = "") => {
+  const go = (t: "list" | "dept" | "staff", d = "") => {
     setTab(t);
     setDeptFilter(d);
     setStatusFilter("");
@@ -101,6 +106,7 @@ export default function AdminPanel() {
         setRows(j.rows);
         setStatusMap(j.statusMap);
         setDisabled(j.disabled);
+        setStaff(j.staff ?? {});
         setFailed(j.failed);
       } catch (e) {
         setMsg(e instanceof Error ? e.message : "讀取失敗");
@@ -127,6 +133,7 @@ export default function AdminPanel() {
         setRows(j.rows);
         setStatusMap(j.statusMap);
         setDisabled(j.disabled);
+        setStaff(j.staff ?? {});
         setFailed(j.failed);
       })
       .catch(() => {})
@@ -189,6 +196,17 @@ export default function AdminPanel() {
     }
   }
 
+  async function saveStaff(id: string, list: string[]) {
+    const next = { ...staff, [id]: list };
+    setMsg("");
+    try {
+      await call(pw, { action: "setStaff", staff: next });
+      setStaff(next);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "更新失敗");
+    }
+  }
+
   async function toggleDept(id: string) {
     const next = disabled.includes(id) ? disabled.filter((x) => x !== id) : [...disabled, id];
     setMsg("");
@@ -211,7 +229,7 @@ export default function AdminPanel() {
       (r) =>
         (!deptFilter || r.dept === deptFilter) &&
         (!statusFilter || r.status === statusFilter) &&
-        (!k || [r.bookingId, r.name, r.contactPhone, r.product].some((v) => v.toLowerCase().includes(k))),
+        (!k || [r.bookingId, r.name, r.contactPhone, r.memberPhone, r.product].some((v) => v.toLowerCase().includes(k))),
       )
       .sort((a, b) => {
         // 依維修編號排序（「全部」時先依部門順序分組）；新到舊 = 編號大的在前
@@ -273,13 +291,13 @@ export default function AdminPanel() {
 
       <main className="mx-auto max-w-[1500px] px-4 py-5">
         <div className="mb-4 flex gap-2">
-          {(["list", "dept"] as const).map((t) => (
+          {(["list", "dept", "staff"] as const).map((t) => (
             <button
               key={t}
               onClick={() => go(t, t === "list" ? deptFilter : "")}
               className={`${btn} ${tab === t ? "bg-decathlon text-white" : "bg-white text-zinc-700"}`}
             >
-              {t === "list" ? "登記清單" : "部門開關"}
+              {t === "list" ? "登記清單" : t === "dept" ? "部門開關" : "接待人員"}
             </button>
           ))}
         </div>
@@ -289,7 +307,52 @@ export default function AdminPanel() {
           <p className="mb-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">讀取失敗的分頁：{failed.join("、")}</p>
         )}
 
-        {tab === "dept" ? (
+        {tab === "staff" ? (
+          <div className="space-y-3">
+            <p className="text-sm text-zinc-500">各部門的接待人員名單會出現在客人登記表單的下拉選單；沒有設定人員的部門不會顯示這個欄位。</p>
+            {DEPARTMENTS.map((d) => {
+              const list = staff[d.id] ?? [];
+              return (
+                <div key={d.id} className="rounded-2xl bg-white p-4 shadow">
+                  <p className="font-semibold">{d.name}</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {list.length === 0 && <span className="text-sm text-zinc-400">尚未設定</span>}
+                    {list.map((n) => (
+                      <span key={n} className="flex items-center gap-1 rounded-full bg-zinc-100 py-1 pl-3 pr-2 text-sm">
+                        {n}
+                        <button
+                          onClick={() => confirm(`要移除 ${n} 嗎？`) && saveStaff(d.id, list.filter((x) => x !== n))}
+                          className="px-1 text-zinc-500 hover:text-red-600"
+                          aria-label={`移除 ${n}`}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <form
+                    className="mt-3 flex gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const n = (newStaff[d.id] ?? "").trim();
+                      if (!n || list.includes(n)) return;
+                      saveStaff(d.id, [...list, n]);
+                      setNewStaff((m) => ({ ...m, [d.id]: "" }));
+                    }}
+                  >
+                    <input
+                      value={newStaff[d.id] ?? ""}
+                      onChange={(e) => setNewStaff((m) => ({ ...m, [d.id]: e.target.value }))}
+                      placeholder="輸入人員姓名"
+                      className="min-w-0 flex-1 rounded-lg border border-zinc-300 bg-zinc-50 px-3 py-2 text-sm"
+                    />
+                    <button className={`${btn} bg-decathlon text-white`}>新增</button>
+                  </form>
+                </div>
+              );
+            })}
+          </div>
+        ) : tab === "dept" ? (
           <div className="rounded-2xl bg-white p-4 shadow">
             <p className="mb-3 text-sm text-zinc-500">關閉的部門不會出現在客人的登記選單，也無法登記。</p>
             <ul className="divide-y">
@@ -366,6 +429,13 @@ export default function AdminPanel() {
                   <p className="mt-1 font-semibold">
                     {r.name} <span className="font-normal text-zinc-500">{r.contactPhone}</span>
                   </p>
+                  {(r.memberPhone || r.staff) && (
+                    <p className="text-xs text-zinc-500">
+                      {r.memberPhone && <>會員電話 {r.memberPhone}</>}
+                      {r.memberPhone && r.staff && "　"}
+                      {r.staff && <>接待 {r.staff}</>}
+                    </p>
+                  )}
                   <p className="text-sm text-zinc-700">{r.product}</p>
                   {editing?.key === `${r.dept}-${r.row}` ? (
                     <div className="mt-1">
