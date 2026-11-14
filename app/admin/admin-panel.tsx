@@ -426,16 +426,11 @@ export default function AdminPanel() {
                     <span className="text-xs text-zinc-500">{r.deptName}</span>
                     <span className="text-xs text-zinc-500">{r.receivedDate}</span>
                   </div>
-                  <p className="mt-1 font-semibold">
-                    {r.name} <span className="font-normal text-zinc-500">{r.contactPhone}</span>
+                  <p className="mt-1 font-semibold">{r.name}</p>
+                  <p className="text-sm text-zinc-600">
+                    連絡電話 {r.contactPhone || "－"}　會員電話 {r.memberPhone || "－"}
                   </p>
-                  {(r.memberPhone || r.staff) && (
-                    <p className="text-xs text-zinc-500">
-                      {r.memberPhone && <>會員電話 {r.memberPhone}</>}
-                      {r.memberPhone && r.staff && "　"}
-                      {r.staff && <>接待 {r.staff}</>}
-                    </p>
-                  )}
+                  {r.staff && <p className="text-xs text-zinc-500">接待 {r.staff}</p>}
                   <p className="text-sm text-zinc-700">{r.product}</p>
                   {editing?.key === `${r.dept}-${r.row}` ? (
                     <div className="mt-1">
