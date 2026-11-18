@@ -63,6 +63,53 @@ export async function setStaff(staff: Record<string, string[]>) {
   });
 }
 
+// ===== 資料更新時間 =====
+// 試算表本身不記每一列的修改時間，所以後台在登記、改狀態、編輯、通知時，
+// 自己把時間記在「更新紀錄」分頁（A 欄＝部門|編號，B 欄＝時間戳記毫秒）。
+// 記不起來只會記錄 log，不影響主要操作
+const LOG_TAB = "更新紀錄";
+
+async function ensureTab(title: string) {
+  const client = getClient();
+  const spreadsheetId = sheetId();
+  const meta = await client.spreadsheets.get({ spreadsheetId, fields: "sheets.properties.title" });
+  if (!meta.data.sheets?.some((s) => s.properties?.title === title)) {
+    await client.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [{ addSheet: { properties: { title } } }] } });
+  }
+}
+
+export async function getUpdateTimes(): Promise<Record<string, number>> {
+  try {
+    const res = await getClient().spreadsheets.values.get({ spreadsheetId: sheetId(), range: `'${LOG_TAB}'!A:B` });
+    const out: Record<string, number> = {};
+    for (const r of res.data.values ?? []) if (r[0]) out[text(r[0])] = Number(r[1]) || 0;
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export async function touchBooking(deptId: string, bookingId: string) {
+  try {
+    const api = getClient().spreadsheets.values;
+    const key = `${deptId}|${bookingId}`;
+    let res = await api.get({ spreadsheetId: sheetId(), range: `'${LOG_TAB}'!A:A` }).catch(async () => {
+      await ensureTab(LOG_TAB);
+      return null;
+    });
+    const keys = (res?.data.values ?? []).map((r) => text(r[0]));
+    const i = keys.indexOf(key);
+    const values = [[key, String(Date.now())]];
+    if (i >= 0) {
+      await api.update({ spreadsheetId: sheetId(), range: `'${LOG_TAB}'!A${i + 1}:B${i + 1}`, valueInputOption: "RAW", requestBody: { values } });
+    } else {
+      await api.append({ spreadsheetId: sheetId(), range: `'${LOG_TAB}'!A:B`, valueInputOption: "RAW", requestBody: { values } });
+    }
+  } catch (e) {
+    console.error("記錄更新時間失敗", e);
+  }
+}
+
 async function ensureSettingsTab() {
   const client = getClient();
   const spreadsheetId = sheetId();
@@ -101,6 +148,7 @@ export type AdminRow = {
   product: string;
   problem: string;
   canNotify: boolean;
+  updatedAt: number;
 };
 
 const pick = (headers: string[], names: string[]) => headers.findIndex((h) => names.includes(h));
@@ -159,6 +207,7 @@ function parseDept(dept: Dept, values: unknown[][]): { rows: AdminRow[]; col: De
       product: get(r, col.product),
       problem: get(r, col.problem),
       canNotify: get(r, col.line) !== "",
+      updatedAt: 0,
     });
   }
   return { rows, col };
@@ -228,6 +277,8 @@ export async function listBookings(deptId?: string) {
     const used = [...new Set(p.rows.map((r) => r.status).filter(Boolean))];
     statusMap[d.id] = listed.length ? listed : [...new Set([...DEFAULT_STATUSES, ...used])];
   });
+  const times = await getUpdateTimes();
+  for (const r of rows) r.updatedAt = times[`${r.dept}|${r.bookingId}`] ?? 0;
   return { rows, statusMap, failed };
 }
 
@@ -255,6 +306,7 @@ export async function updateStatus(deptId: string, row: number, bookingId: strin
     valueInputOption: "RAW",
     requestBody: { values: [[status]] },
   });
+  await touchBooking(deptId, bookingId);
 }
 
 // 取件期限 = 通知當天（台北時間）起算 5 天後
@@ -316,6 +368,38 @@ export async function updateProblem(deptId: string, row: number, bookingId: stri
     valueInputOption: "RAW",
     requestBody: { values: [[value]] },
   });
+  await touchBooking(deptId, bookingId);
+}
+
+// 編輯整張單：除了維修編號以外的欄位都能改（只寫入有帶進來、且該分頁有對應欄位的項目）
+export type BookingEdit = Partial<
+  Pick<AdminRow, "status" | "receivedDate" | "name" | "contactPhone" | "memberPhone" | "staff" | "product" | "problem">
+>;
+const EDIT_COLUMNS: Record<keyof BookingEdit, string[]> = {
+  status: ["狀態"],
+  receivedDate: ["接單日期"],
+  name: ["顧客姓名"],
+  contactPhone: ["連絡電話"],
+  memberPhone: ["會員電話"],
+  staff: ["接單人"],
+  product: ["商品名稱", "燙印商品"],
+  problem: ["維修部位", "維修部位及客人說明", "備註"],
+};
+export async function updateBooking(deptId: string, row: number, bookingId: string, edit: BookingEdit) {
+  const { dept, headers } = await locate(deptId, row, bookingId);
+  const data: { range: string; values: string[][] }[] = [];
+  for (const key of Object.keys(EDIT_COLUMNS) as (keyof BookingEdit)[]) {
+    if (typeof edit[key] !== "string") continue;
+    const c = pick(headers, EDIT_COLUMNS[key]);
+    if (c < 0) continue;
+    data.push({ range: `'${dept.sheet}'!${columnLetter(c)}${row}`, values: [[edit[key] as string]] });
+  }
+  if (!data.length) return;
+  await getClient().spreadsheets.values.batchUpdate({
+    spreadsheetId: sheetId(),
+    requestBody: { valueInputOption: "RAW", data },
+  });
+  await touchBooking(deptId, bookingId);
 }
 
 export async function notifyPickup(deptId: string, row: number, bookingId: string) {
@@ -348,6 +432,7 @@ export async function notifyPickup(deptId: string, row: number, bookingId: strin
     console.error("LINE 通知失敗", push.status, detail);
     throw new Error(`LINE 推播失敗（${push.status}）${detail.slice(0, 200)}`);
   }
+  await touchBooking(deptId, bookingId);
 }
 
 // 客人在 LINE 回覆「已取件」：把這位客人所有「待取件」的登記改成已取件。
@@ -374,6 +459,7 @@ export async function markPickedUp(userId: string): Promise<string[]> {
         requestBody: { values: [[target]] },
       });
       done.push(text(r[0]));
+      await touchBooking(dept.id, text(r[0]));
     }
   }
   return done;

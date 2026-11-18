@@ -1,4 +1,4 @@
-import { getDisabledDepartments, getStaff } from "@/lib/admin";
+import { getDisabledDepartments, getStaff, touchBooking } from "@/lib/admin";
 import { findDepartment } from "@/lib/departments";
 import { pushBookingCard } from "@/lib/line";
 import { createBooking } from "@/lib/sheets";
@@ -60,6 +60,7 @@ export async function POST(request: Request) {
       lineName: line.name,
       lineUserId: line.userId,
     });
+    await touchBooking(dept.id, bookingId);
     // 推播登記完成卡片給客人；失敗只記錄，不影響登記結果
     await pushBookingCard(line.userId, {
       bookingId,

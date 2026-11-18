@@ -1,4 +1,4 @@
-import { checkAdmin, getDisabledDepartments, getStaff, listBookings, setStaff, notifyPickup, setDisabledDepartments, updateProblem, updateStatus } from "@/lib/admin";
+import { checkAdmin, getDisabledDepartments, getStaff, listBookings, setStaff, notifyPickup, setDisabledDepartments, updateBooking, updateProblem, updateStatus } from "@/lib/admin";
 import { DEPARTMENTS } from "@/lib/departments";
 
 // 後台所有操作都走這支（POST，標頭帶密碼 x-admin-password）
@@ -19,6 +19,15 @@ export async function POST(request: Request) {
       case "problem":
         await updateProblem(String(body.dept), Number(body.row), String(body.bookingId), String(body.value ?? ""));
         return Response.json({ ok: true });
+      case "edit": {
+        const e = body.edit ?? {};
+        const edit: Record<string, string> = {};
+        for (const k of ["status", "receivedDate", "name", "contactPhone", "memberPhone", "staff", "product", "problem"]) {
+          if (typeof e[k] === "string") edit[k] = e[k];
+        }
+        await updateBooking(String(body.dept), Number(body.row), String(body.bookingId), edit);
+        return Response.json({ ok: true });
+      }
       case "notify":
         await notifyPickup(String(body.dept), Number(body.row), String(body.bookingId));
         return Response.json({ ok: true });
