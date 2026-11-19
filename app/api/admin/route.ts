@@ -1,4 +1,4 @@
-import { checkAdmin, getDisabledDepartments, getStaff, listBookings, setStaff, notifyPickup, setDisabledDepartments, updateBooking, updateProblem, updateStatus } from "@/lib/admin";
+import { checkAdmin, readSettings, listBookings, setStaff, notifyPickup, setDisabledDepartments, updateBooking, updateProblem, updateStatus } from "@/lib/admin";
 import { DEPARTMENTS } from "@/lib/departments";
 
 // 後台所有操作都走這支（POST，標頭帶密碼 x-admin-password）
@@ -10,7 +10,7 @@ export async function POST(request: Request) {
       case "login":
         return Response.json({ ok: true });
       case "list": {
-        const [data, disabled, staff] = await Promise.all([listBookings(body.dept || undefined), getDisabledDepartments(), getStaff()]);
+        const [data, { disabled, staff }] = await Promise.all([listBookings(body.dept || undefined), readSettings()]);
         return Response.json({ ...data, disabled, staff });
       }
       case "status":

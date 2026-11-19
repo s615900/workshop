@@ -22,38 +22,45 @@ const sheetId = () => {
   return id;
 };
 
-// 停用的部門 id（存在試算表的「後台設定」分頁 A1，用逗號分隔）；沒有該分頁就當作全部啟用
-export async function getDisabledDepartments(): Promise<string[]> {
+// 後台設定（試算表「後台設定」分頁：A1＝停用的部門 id，用逗號分隔；B1＝各部門接待人員 JSON）。
+// 兩格一次讀完，並在伺服器記憶體暫存 60 秒（自己改設定時會立刻清掉），減少每次重新整理的 API 呼叫
+let settingsCache: { at: number; disabled: string[]; staff: Record<string, string[]> } | null = null;
+
+export async function readSettings() {
+  if (settingsCache && Date.now() - settingsCache.at < 60_000) return settingsCache;
+  let disabled: string[] = [];
+  let staff: Record<string, string[]> = {};
   try {
-    const res = await getClient().spreadsheets.values.get({
+    const res = await getClient().spreadsheets.values.batchGet({
       spreadsheetId: sheetId(),
-      range: `'${SETTINGS_TAB}'!A1`,
+      ranges: [`'${SETTINGS_TAB}'!A1`, `'${SETTINGS_TAB}'!B1`],
     });
-    return text(res.data.values?.[0]?.[0]).split(",").map((s) => s.trim()).filter(Boolean);
+    const [a, b] = res.data.valueRanges ?? [];
+    disabled = text(a?.values?.[0]?.[0]).split(",").map((s) => s.trim()).filter(Boolean);
+    try {
+      const j = JSON.parse(text(b?.values?.[0]?.[0]) || "{}");
+      for (const d of DEPARTMENTS) if (Array.isArray(j[d.id])) staff[d.id] = j[d.id].map(text).filter(Boolean);
+    } catch {
+      staff = {};
+    }
+    settingsCache = { at: Date.now(), disabled, staff };
   } catch {
-    return [];
+    // 沒有該分頁就當作全部啟用、沒有人員名單（不暫存，下次再試）
   }
+  return { at: 0, disabled, staff };
 }
 
-// 各部門接待人員名單（存在「後台設定」分頁 B1，JSON：{"C1":["小明","小華"],...}）
+export async function getDisabledDepartments(): Promise<string[]> {
+  return (await readSettings()).disabled;
+}
+
+// 各部門接待人員名單
 export async function getStaff(): Promise<Record<string, string[]>> {
-  try {
-    const res = await getClient().spreadsheets.values.get({
-      spreadsheetId: sheetId(),
-      range: `'${SETTINGS_TAB}'!B1`,
-    });
-    const j = JSON.parse(text(res.data.values?.[0]?.[0]) || "{}");
-    const out: Record<string, string[]> = {};
-    for (const d of DEPARTMENTS) {
-      if (Array.isArray(j[d.id])) out[d.id] = j[d.id].map(text).filter(Boolean);
-    }
-    return out;
-  } catch {
-    return {};
-  }
+  return (await readSettings()).staff;
 }
 
 export async function setStaff(staff: Record<string, string[]>) {
+  settingsCache = null;
   await ensureSettingsTab();
   await getClient().spreadsheets.values.update({
     spreadsheetId: sheetId(),
@@ -123,6 +130,7 @@ async function ensureSettingsTab() {
 }
 
 export async function setDisabledDepartments(ids: string[]) {
+  settingsCache = null;
   await ensureSettingsTab();
   await getClient().spreadsheets.values.update({
     spreadsheetId: sheetId(),
@@ -213,6 +221,8 @@ function parseDept(dept: Dept, values: unknown[][]): { rows: AdminRow[]; col: De
   return { rows, col };
 }
 
+const statusOptionsCache = new Map<string, { at: number; list: string[] }>();
+
 // 一次讀完所有部門（1 次讀資料 + 1 次讀狀態下拉選單），不再每個部門分開讀好幾次
 export async function listBookings(deptId?: string) {
   const depts = deptId ? DEPARTMENTS.filter((d) => d.id === deptId) : [...DEPARTMENTS];
@@ -222,6 +232,7 @@ export async function listBookings(deptId?: string) {
   const failed: string[] = [];
   const statusMap: Record<string, string[]> = {};
 
+  const timesPromise = getUpdateTimes();
   let ranges: unknown[][][];
   try {
     const res = await client.spreadsheets.values.batchGet({
@@ -252,12 +263,21 @@ export async function listBookings(deptId?: string) {
       return { id: d.id, range: `'${d.sheet}'!${columnLetter(p.col.status)}${lastRow}` };
     })
     .filter((c): c is { id: string; range: string } => !!c);
+  // 下拉選單選項很少改，記在伺服器記憶體 10 分鐘，不用每次重新整理都去讀
   const listedMap: Record<string, string[]> = {};
-  if (cells.length) {
+  const needCells = cells.filter((c) => {
+    const hit = statusOptionsCache.get(c.id);
+    if (hit && Date.now() - hit.at < 600_000) {
+      listedMap[c.id] = hit.list;
+      return false;
+    }
+    return true;
+  });
+  if (needCells.length) {
     try {
       const res = await client.spreadsheets.get({
         spreadsheetId,
-        ranges: cells.map((c) => c.range),
+        ranges: needCells.map((c) => c.range),
         fields: "sheets(properties.title,data.rowData.values.dataValidation)",
       });
       for (const s of res.data.sheets ?? []) {
@@ -265,6 +285,7 @@ export async function listBookings(deptId?: string) {
         const cond = s.data?.[0]?.rowData?.[0]?.values?.[0]?.dataValidation?.condition;
         if (!dept || cond?.type !== "ONE_OF_LIST") continue;
         listedMap[dept.id] = (cond.values ?? []).map((v) => text(v.userEnteredValue)).filter(Boolean);
+        statusOptionsCache.set(dept.id, { at: Date.now(), list: listedMap[dept.id] });
       }
     } catch {}
   }
@@ -277,7 +298,7 @@ export async function listBookings(deptId?: string) {
     const used = [...new Set(p.rows.map((r) => r.status).filter(Boolean))];
     statusMap[d.id] = listed.length ? listed : [...new Set([...DEFAULT_STATUSES, ...used])];
   });
-  const times = await getUpdateTimes();
+  const times = await timesPromise;
   for (const r of rows) r.updatedAt = times[`${r.dept}|${r.bookingId}`] ?? 0;
   return { rows, statusMap, failed };
 }
